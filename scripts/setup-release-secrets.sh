@@ -30,7 +30,28 @@ echo "Repository: $REPO"
 echo
 
 # Reste im Eingabepuffer wegwerfen, bevor gefragt wird.
-drain_stdin() { while read -r -s -t 0.1 -n 4096 _ 2>/dev/null; do :; done; true; }
+#
+# `read -n` schaltet das Terminal in den Rohmodus. Ohne Sicherung und
+# Rückgabe der Einstellungen verarbeitet der Treiber danach die Rücktaste
+# nicht mehr selbst — man tippt dann Steuerzeichen in den Wert.
+drain_stdin() {
+  local saved
+  saved="$(stty -g < /dev/tty 2>/dev/null)" || return 0
+  while read -r -s -t 0.1 -n 4096 _ < /dev/tty 2>/dev/null; do :; done
+  stty "$saved" < /dev/tty 2>/dev/null || true
+  return 0
+}
+
+# gh befragt das Terminal nur, wenn seine Ausgabe eines ist. Umgeleitet
+# bleibt es still — das hält die Escape-Sequenzen aus dem Protokoll.
+set_secret() {   # set_secret <Name> <Wert>
+  if printf '%s' "$2" | gh secret set "$1" --repo "$REPO" >/dev/null 2>&1; then
+    echo "     ✓ $1"
+  else
+    echo "     ✗ $1 konnte nicht gesetzt werden" >&2
+    return 1
+  fi
+}
 
 # Steuerzeichen entfernen und Rand trimmen. Genau hier ging es schief:
 # eine Terminalantwort im Wert macht das Secret ungültig.
@@ -119,11 +140,15 @@ else
   [ -s "$TMP/cert.p12" ] || { echo "  Export fehlgeschlagen." >&2; exit 1; }
 fi
 
-base64 -i "$TMP/cert.p12" | gh secret set MACOS_CERT_P12 --repo "$REPO"
-printf '%s' "$P12PW"   | gh secret set MACOS_CERT_PASSWORD --repo "$REPO"
-printf '%s' "$SIGN_ID" | gh secret set MACOS_SIGN_IDENTITY --repo "$REPO"
+if base64 -i "$TMP/cert.p12" | gh secret set MACOS_CERT_P12 --repo "$REPO" >/dev/null 2>&1; then
+  echo "     ✓ MACOS_CERT_P12"
+else
+  echo "     ✗ MACOS_CERT_P12 konnte nicht gesetzt werden" >&2; exit 1
+fi
+set_secret MACOS_CERT_PASSWORD  "$P12PW"
+set_secret MACOS_SIGN_IDENTITY  "$SIGN_ID"
 unset P12PW
-echo "  ✓ MACOS_CERT_P12, MACOS_CERT_PASSWORD, MACOS_SIGN_IDENTITY"
+
 
 # -------------------------------------------------------------- Notarisierung
 
@@ -145,11 +170,10 @@ ask APP_PW "  App-spezifisches Passwort: " \
     '^[A-Za-z]{4}-[A-Za-z]{4}-[A-Za-z]{4}-[A-Za-z]{4}$' \
     "Erwartet wird die Form abcd-efgh-ijkl-mnop (vier Vierergruppen)." -s
 
-printf '%s' "$APPLE_ID" | gh secret set APPLE_ID --repo "$REPO"
-printf '%s' "$TEAM_ID"  | gh secret set APPLE_TEAM_ID --repo "$REPO"
-printf '%s' "$APP_PW"   | gh secret set APPLE_APP_PASSWORD --repo "$REPO"
+set_secret APPLE_ID           "$APPLE_ID"
+set_secret APPLE_TEAM_ID      "$TEAM_ID"
+set_secret APPLE_APP_PASSWORD "$APP_PW"
 unset APP_PW
-echo "  ✓ APPLE_ID, APPLE_TEAM_ID, APPLE_APP_PASSWORD"
 
 # ------------------------------------------------------------------ Kontrolle
 
