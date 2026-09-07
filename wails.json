@@ -1,0 +1,15 @@
+{
+  "$schema": "https://wails.io/schemas/config.v2.json",
+  "name": "SoapMacUi",
+  "outputfilename": "SoapMacUi",
+  "frontend:dir": "frontend",
+  "frontend:build": "npm run build",
+  "frontend:install": "npm install",
+  "assetdir": "frontend/dist",
+  "author": { "name": "SoapMacUi contributors" },
+  "info": {
+    "productName": "SoapMacUi",
+    "productVersion": "0.1.0",
+    "comments": "SOAP-Schnittstellen testen — nativ auf Apple Silicon"
+  }
+}

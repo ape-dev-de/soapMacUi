@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Beispiel-Dienst für die Tests: document/literal, WSDL-Namespace mit
+     Präfix, Schema per xsd:import mit relativem Pfad. -->
+<wsdl:definitions name="BookstoreService"
+                  targetNamespace="urn:example:bookstore:v1"
+                  xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/"
+                  xmlns:soap="http://schemas.xmlsoap.org/wsdl/soap/"
+                  xmlns:mime="http://schemas.xmlsoap.org/wsdl/mime/"
+                  xmlns:xs="http://www.w3.org/2001/XMLSchema"
+                  xmlns:tns="urn:example:bookstore:v1">
+
+  <wsdl:documentation>Beispielhafter Buchhandels-Dienst.</wsdl:documentation>
+
+  <wsdl:types>
+    <xs:schema targetNamespace="urn:example:bookstore:v1">
+      <xs:import namespace="urn:example:bookstore:v1" schemaLocation="schema/bookstore.xsd"/>
+    </xs:schema>
+  </wsdl:types>
+
+  <wsdl:message name="loginRequest"><wsdl:part name="parameters" element="tns:login"/></wsdl:message>
+  <wsdl:message name="loginResponse"><wsdl:part name="parameters" element="tns:loginResponse"/></wsdl:message>
+  <wsdl:message name="findBooksRequest"><wsdl:part name="parameters" element="tns:findBooks"/></wsdl:message>
+  <wsdl:message name="findBooksResponse"><wsdl:part name="parameters" element="tns:findBooksResponse"/></wsdl:message>
+  <wsdl:message name="uploadCoverRequest"><wsdl:part name="parameters" element="tns:uploadCover"/></wsdl:message>
+  <wsdl:message name="uploadCoverResponse"><wsdl:part name="parameters" element="tns:uploadCoverResponse"/></wsdl:message>
+  <wsdl:message name="storeFault"><wsdl:part name="fault" element="tns:storeFault"/></wsdl:message>
+
+  <wsdl:portType name="BookstorePortType">
+    <wsdl:operation name="login">
+      <wsdl:documentation>Meldet einen Benutzer an.</wsdl:documentation>
+      <wsdl:input message="tns:loginRequest"/>
+      <wsdl:output message="tns:loginResponse"/>
+      <wsdl:fault name="storeFault" message="tns:storeFault"/>
+    </wsdl:operation>
+    <wsdl:operation name="findBooks">
+      <wsdl:input message="tns:findBooksRequest"/>
+      <wsdl:output message="tns:findBooksResponse"/>
+    </wsdl:operation>
+    <wsdl:operation name="uploadCover">
+      <wsdl:input message="tns:uploadCoverRequest"/>
+      <wsdl:output message="tns:uploadCoverResponse"/>
+    </wsdl:operation>
+  </wsdl:portType>
+
+  <wsdl:binding name="BookstoreSoapBinding" type="tns:BookstorePortType">
+    <soap:binding style="document" transport="http://schemas.xmlsoap.org/soap/http"/>
+    <wsdl:operation name="login">
+      <soap:operation soapAction="urn:example:bookstore:login"/>
+      <wsdl:input><soap:body use="literal"/></wsdl:input>
+      <wsdl:output><soap:body use="literal"/></wsdl:output>
+      <wsdl:fault name="storeFault"><soap:fault name="storeFault" use="literal"/></wsdl:fault>
+    </wsdl:operation>
+    <wsdl:operation name="findBooks">
+      <soap:operation soapAction=""/>
+      <wsdl:input><soap:body use="literal"/></wsdl:input>
+      <wsdl:output><soap:body use="literal"/></wsdl:output>
+    </wsdl:operation>
+    <!-- Anhang-Hinweis: die Operation soll MTOM vorschlagen. -->
+    <wsdl:operation name="uploadCover">
+      <soap:operation soapAction="urn:example:bookstore:uploadCover"/>
+      <wsdl:input>
+        <mime:multipartRelated>
+          <mime:part><soap:body use="literal"/></mime:part>
+          <mime:part><mime:content part="image" type="application/octet-stream"/></mime:part>
+        </mime:multipartRelated>
+      </wsdl:input>
+      <wsdl:output><soap:body use="literal"/></wsdl:output>
+    </wsdl:operation>
+  </wsdl:binding>
+
+  <wsdl:service name="BookstoreService">
+    <wsdl:port name="BookstorePort" binding="tns:BookstoreSoapBinding">
+      <soap:address location="https://books.example.org/soap/v1"/>
+    </wsdl:port>
+  </wsdl:service>
+</wsdl:definitions>

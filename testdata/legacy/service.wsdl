@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Zweiter Beispiel-Dienst, bewusst anders gebaut als der erste:
+     WSDL-Namespace als Default ohne Präfix, Schema inline, rpc/literal.
+     Beides kommt in freier Wildbahn vor und muss gleichermassen laufen. -->
+<definitions name="LegacyService"
+             targetNamespace="urn:example:legacy:v1"
+             xmlns="http://schemas.xmlsoap.org/wsdl/"
+             xmlns:soap="http://schemas.xmlsoap.org/wsdl/soap/"
+             xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+             xmlns:tns="urn:example:legacy:v1">
+
+  <types>
+    <xsd:schema targetNamespace="urn:example:legacy:v1"
+                xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+                elementFormDefault="unqualified">
+      <xsd:complexType name="Ticket">
+        <xsd:sequence>
+          <xsd:element name="id" type="xsd:int"/>
+          <xsd:element name="subject" type="xsd:string"/>
+          <xsd:element name="createdAt" type="xsd:dateTime"/>
+          <xsd:element name="tag" type="xsd:string" minOccurs="0" maxOccurs="unbounded"/>
+        </xsd:sequence>
+      </xsd:complexType>
+      <xsd:element name="ping" type="xsd:string"/>
+    </xsd:schema>
+  </types>
+
+  <message name="getTicketRequest"><part name="id" type="xsd:int"/></message>
+  <message name="getTicketResponse"><part name="ticket" type="tns:Ticket"/></message>
+  <message name="pingRequest"><part name="parameters" element="tns:ping"/></message>
+  <message name="pingResponse"><part name="parameters" element="tns:ping"/></message>
+
+  <portType name="LegacyPortType">
+    <operation name="getTicket">
+      <input message="tns:getTicketRequest"/>
+      <output message="tns:getTicketResponse"/>
+    </operation>
+    <operation name="ping">
+      <input message="tns:pingRequest"/>
+      <output message="tns:pingResponse"/>
+    </operation>
+  </portType>
+
+  <binding name="LegacySoapBinding" type="tns:LegacyPortType">
+    <soap:binding style="rpc" transport="http://schemas.xmlsoap.org/soap/http"/>
+    <operation name="getTicket">
+      <soap:operation soapAction="getTicket"/>
+      <input><soap:body use="literal" namespace="urn:example:legacy:v1"/></input>
+      <output><soap:body use="literal" namespace="urn:example:legacy:v1"/></output>
+    </operation>
+    <operation name="ping">
+      <soap:operation soapAction=""/>
+      <input><soap:body use="literal" namespace="urn:example:legacy:v1"/></input>
+      <output><soap:body use="literal" namespace="urn:example:legacy:v1"/></output>
+    </operation>
+  </binding>
+
+  <service name="LegacyService">
+    <port name="LegacyPort" binding="tns:LegacySoapBinding">
+      <soap:address location="http://legacy.example.org/soap"/>
+    </port>
+  </service>
+</definitions>

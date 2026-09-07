@@ -1,0 +1,6 @@
+node_modules/
+# dist/ wird gebaut und nicht versioniert. Der Ordner selbst muss aber
+# existieren: main.go bindet ihn per //go:embed ein, und ohne ihn scheitert
+# schon `go build` in einem frisch geklonten Repo.
+dist/*
+!dist/.gitkeep

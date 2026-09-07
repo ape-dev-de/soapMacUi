@@ -1,0 +1,8 @@
+build/bin/
+frontend/wailsjs/
+*.tmp
+.DS_Store
+
+# Echte WSDLs aus Zielsystemen — bleiben lokal, nie ins öffentliche Repo
+testdata-local/
+frontend/package.json.md5

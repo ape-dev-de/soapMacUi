@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Einfache Typen mit Restriktionen. Wird per xsd:include eingebunden und
+     prüft damit die verschachtelte, relative Auflösung von Schema-Verweisen. -->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           targetNamespace="urn:example:bookstore:v1"
+           xmlns:tns="urn:example:bookstore:v1"
+           elementFormDefault="qualified">
+
+  <xs:simpleType name="Isbn13">
+    <xs:annotation><xs:documentation>ISBN-13 ohne Trennzeichen.</xs:documentation></xs:annotation>
+    <xs:restriction base="xs:string">
+      <xs:pattern value="[0-9]{13}"/>
+      <xs:length value="13"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:simpleType name="ShortText">
+    <xs:restriction base="xs:string">
+      <xs:maxLength value="120"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <!-- Enumeration: der Generator muss hier einen gültigen Wert einsetzen
+       statt eines Fragezeichens. -->
+  <xs:simpleType name="Format">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="hardcover"/>
+      <xs:enumeration value="paperback"/>
+      <xs:enumeration value="ebook"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:simpleType name="Currency">
+    <xs:restriction base="xs:decimal">
+      <xs:fractionDigits value="2"/>
+      <xs:minInclusive value="0"/>
+    </xs:restriction>
+  </xs:simpleType>
+</xs:schema>

@@ -1,0 +1,266 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SoapMacUi</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="app">
+    <header class="titlebar">
+      <div class="tb-lights"></div>
+      <div class="tb-title">
+        <span class="mark"></span>
+        <span id="tbProject">Kein Projekt geöffnet</span>
+      </div>
+      <div class="tb-actions">
+        <button class="btn ghost" id="btnInspector" title="Inspektor ein-/ausblenden">⌥⌘I</button>
+      </div>
+    </header>
+
+    <div class="body">
+      <!-- Seitenleiste -->
+      <aside class="sidebar" id="sidebar">
+        <div class="side-head">
+          <span class="side-title">Projekte</span>
+          <button class="btn icon" id="btnNewProject" title="Neues Projekt">+</button>
+        </div>
+        <div class="side-scroll" id="tree">
+          <div class="empty">
+            <p class="empty-title">Noch kein Projekt</p>
+            <p class="empty-sub">Lege ein Projekt an und lade ein WSDL, um loszulegen.</p>
+            <button class="btn primary" id="btnFirstProject">Projekt anlegen</button>
+          </div>
+        </div>
+        <div class="side-foot">
+          <button class="btn wide" id="btnLoadWsdl" disabled>WSDL laden …</button>
+        </div>
+      </aside>
+
+      <!-- Hauptbereich -->
+      <main class="main">
+        <div class="endpoint-bar">
+          <div class="ep-tabs" id="epTabs"></div>
+          <div class="ep-actions">
+            <button class="btn icon" id="btnAddEndpoint" title="Endpoint hinzufügen">+</button>
+          </div>
+        </div>
+
+        <div class="split">
+          <section class="pane request-pane">
+            <div class="req-tabs" id="reqTabs"></div>
+            <div class="pane-head">
+              <div class="pane-title">
+                <span id="reqTitle">Request</span>
+                <span class="chip" id="reqAction" hidden></span>
+                <span class="chip alt" id="reqVersion" hidden></span>
+              </div>
+              <div class="tabs" id="reqViewTabs">
+                <button class="tab active" data-rv="body">Body</button>
+                <button class="tab" data-rv="attach">Anhänge <span class="badge" id="reqAttBadge" hidden>0</span></button>
+                <button class="tab" data-rv="headers">Header <span class="badge" id="reqHdrBadge" hidden>0</span></button>
+              </div>
+              <div class="pane-tools">
+                <button class="btn ghost small" id="btnEdFold" title="Alle Elemente zuklappen">⌄</button>
+                <button class="btn ghost small" id="btnEdUnfold" title="Alle Elemente aufklappen">⌃</button>
+                <button class="btn ghost small" id="btnAttach" title="Datei anhängen und xop:Include an der Cursorposition einsetzen">Anhängen ⇢ hier</button>
+                <button class="btn ghost small" id="btnFormat" title="Nur auf Klick — automatisch wird nie formatiert">Formatieren</button>
+                <button class="btn primary small" id="btnSend" disabled>Senden ⌘↵</button>
+              </div>
+            </div>
+            <div class="req-body">
+              <div class="req-view active" id="rview-body">
+                <div class="editor-wrap"><div id="editorHost" class="cm-host"></div></div>
+              </div>
+              <div class="req-view" id="rview-attach">
+                <div class="panel-head">
+                  <span class="hint">Anhänge dieses Requests. Ohne Verweis im Body werden sie bei MTOM nicht übertragen.</span>
+                  <button class="btn primary small" id="btnAddAttach">Datei anhängen …</button>
+                </div>
+                <div class="panel-body" id="reqAttList"></div>
+              </div>
+              <div class="req-view" id="rview-headers">
+                <div class="panel-head">
+                  <span class="hint">Zusätzliche Kopfzeilen. <code>${variable}</code> wird ersetzt.</span>
+                  <button class="btn primary small" id="btnAddHeader">Kopfzeile hinzufügen</button>
+                </div>
+                <div class="panel-body" id="reqHdrList"></div>
+              </div>
+            </div>
+            <div class="pane-foot">
+              <span class="hint" id="editorHint">byte-genau — was hier steht, geht so raus</span>
+              <span class="hint right" id="editorStats"></span>
+            </div>
+          </section>
+
+          <div class="splitter" id="splitter"></div>
+
+          <section class="pane response-pane">
+            <div class="pane-head">
+              <div class="tabs" id="respTabs">
+                <button class="tab active" data-tab="pretty">Antwort</button>
+                <button class="tab" data-tab="raw-req">Raw Request</button>
+                <button class="tab" data-tab="raw-res">Raw Response</button>
+                <button class="tab" data-tab="headers">Antwort-Header</button>
+                <button class="tab" data-tab="attach">Antwort-Anhänge <span class="badge" id="attBadge" hidden>0</span></button>
+              </div>
+              <div class="pane-tools">
+                <span class="status-pill" id="statusPill" hidden></span>
+              </div>
+            </div>
+            <div id="faultBox" hidden></div>
+            <div class="resp-body">
+              <div class="resp-view active" id="view-pretty">
+                <div class="xtools">
+                  <button class="btn ghost small" id="btnFoldAll">Alle zuklappen</button>
+                  <button class="btn ghost small" id="btnUnfoldAll">Alle aufklappen</button>
+                </div>
+                <div class="xtree" id="respPretty"></div>
+              </div>
+              <div class="resp-view" id="view-raw-req"><pre class="code mono-raw" id="respRawReq"></pre></div>
+              <div class="resp-view" id="view-raw-res"><pre class="code mono-raw" id="respRawRes"></pre></div>
+              <div class="resp-view" id="view-headers"><div class="kv-list" id="respHeaders"></div></div>
+              <div class="resp-view" id="view-attach"><div class="att-list" id="respAttach"></div></div>
+            </div>
+            <div class="pane-foot">
+              <span class="hint" id="timingHint"></span>
+              <span class="hint right" id="tlsHint"></span>
+            </div>
+          </section>
+        </div>
+      </main>
+
+      <!-- Inspektor -->
+      <aside class="inspector" id="inspector">
+        <div class="insp-scroll">
+          <section class="insp-group">
+            <h3>Endpoint</h3>
+            <label class="field"><span>Name</span><input id="epName" type="text"></label>
+            <label class="field"><span>URL</span><input id="epUrl" type="text" spellcheck="false"></label>
+          </section>
+
+          <section class="insp-group">
+            <h3>Authentifizierung</h3>
+            <label class="field"><span>Verfahren</span>
+              <select id="authKind">
+                <option value="none">keine</option>
+                <option value="basic">HTTP Basic</option>
+                <option value="wss">WS-Security UsernameToken</option>
+              </select>
+            </label>
+            <div id="authDetails" hidden>
+              <label class="field"><span>Benutzer</span><input id="authUser" type="text"></label>
+              <label class="field"><span>Passwort</span><input id="authPass" type="password" placeholder="wird im Schlüsselbund abgelegt"></label>
+              <div id="wssOnly" hidden>
+                <label class="field"><span>Passwort-Typ</span>
+                  <select id="authPwType">
+                    <option value="PasswordText">PasswordText</option>
+                    <option value="PasswordDigest">PasswordDigest</option>
+                  </select>
+                </label>
+                <label class="check"><input type="checkbox" id="authNonce" checked><span>Nonce</span></label>
+                <label class="check"><input type="checkbox" id="authCreated" checked><span>Created</span></label>
+                <label class="check"><input type="checkbox" id="authTimestamp"><span>Timestamp</span></label>
+                <label class="check"><input type="checkbox" id="authMU" checked><span>mustUnderstand="1"</span></label>
+              </div>
+              <p class="note" id="secretNote"></p>
+            </div>
+          </section>
+
+          <section class="insp-group">
+            <h3>Wire-Optionen</h3>
+            <p class="note">Bestimmt die exakten Bytes auf der Leitung.</p>
+            <label class="field"><span>Body</span>
+              <select id="wireBody">
+                <option value="exact">byte-genau senden</option>
+                <option value="strip">Whitespace zwischen Tags entfernen</option>
+                <option value="pretty">neu formatieren</option>
+              </select>
+            </label>
+            <label class="field"><span>SOAPAction</span>
+              <select id="wireAction">
+                <option value="quoted">in Anführungszeichen</option>
+                <option value="unquoted">ohne Anführungszeichen</option>
+                <option value="omit">weglassen</option>
+              </select>
+            </label>
+            <label class="field"><span>Encoding</span>
+              <select id="wireEncoding">
+                <option value="UTF-8">UTF-8</option>
+                <option value="ISO-8859-1">ISO-8859-1</option>
+              </select>
+            </label>
+            <label class="field"><span>Zeilenenden</span>
+              <select id="wireLine">
+                <option value="keep">unverändert</option>
+                <option value="LF">LF</option>
+                <option value="CRLF">CRLF</option>
+              </select>
+            </label>
+            <label class="check"><input type="checkbox" id="wireDecl" checked><span>XML-Deklaration</span></label>
+            <label class="check"><input type="checkbox" id="wireBom"><span>BOM</span></label>
+            <label class="check"><input type="checkbox" id="wireCharset" checked><span>charset im Content-Type</span></label>
+            <label class="check"><input type="checkbox" id="wireGzip" checked><span>gzip akzeptieren</span></label>
+            <label class="check"><input type="checkbox" id="wireChunked"><span>chunked statt Content-Length</span></label>
+            <label class="check"><input type="checkbox" id="wireExpect"><span>Expect: 100-continue</span></label>
+          </section>
+
+          <section class="insp-group">
+            <h3>Anhänge &amp; MTOM</h3>
+            <label class="field"><span>Modus</span>
+              <select id="mtomMode">
+                <option value="none">kein multipart</option>
+                <option value="mtom">MTOM / XOP</option>
+                <option value="swa">SOAP with Attachments</option>
+                <option value="inline">base64 inline</option>
+              </select>
+            </label>
+            <label class="field"><span>Transfer-Encoding</span>
+              <select id="mtomTE">
+                <option value="binary">binary</option>
+                <option value="8bit">8bit</option>
+                <option value="base64">base64</option>
+              </select>
+            </label>
+            <label class="check"><input type="checkbox" id="mtomStartInfo" checked><span>start-info setzen</span></label>
+            <p class="note">Die Anhänge selbst stehen im Reiter <strong>Anhänge</strong> über dem Editor.</p>
+          </section>
+
+          <section class="insp-group">
+            <h3>Transport</h3>
+            <label class="check"><input type="checkbox" id="httpInsecure"><span>Serverzertifikat nicht prüfen</span></label>
+            <label class="check"><input type="checkbox" id="httpRedirects"><span>Weiterleitungen folgen</span></label>
+            <label class="field"><span>Timeout (s)</span><input id="httpTimeout" type="number" min="1" max="900" value="60"></label>
+            <label class="field"><span>Proxy</span><input id="httpProxy" type="text" placeholder="http://host:port"></label>
+          </section>
+        </div>
+      </aside>
+    </div>
+
+    <footer class="statusbar">
+      <span id="statusMsg">Bereit</span>
+      <span class="right" id="statusStore"></span>
+    </footer>
+  </div>
+
+  <div class="ctx" id="ctxMenu" hidden></div>
+
+  <!-- Dialog -->
+  <div class="modal-backdrop" id="modal" hidden>
+    <div class="modal">
+      <h2 id="modalTitle">Titel</h2>
+      <p class="modal-sub" id="modalSub"></p>
+      <input type="text" id="modalInput" spellcheck="false">
+      <label class="check" id="modalCheckWrap" hidden><input type="checkbox" id="modalCheck"><span>Serverzertifikat nicht prüfen</span></label>
+      <div class="modal-actions">
+        <button class="btn" id="modalCancel">Abbrechen</button>
+        <button class="btn primary" id="modalOk">OK</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="editor.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

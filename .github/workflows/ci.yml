@@ -1,0 +1,79 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  # Der Kern ist plattformunabhängig und läuft deshalb auch auf Linux —
+  # schnelles Feedback ohne macOS-Runner-Minuten.
+  core:
+    name: Kern (Linux)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Formatierung
+        run: |
+          unformatted=$(gofmt -l . | grep -v '^frontend/' || true)
+          if [ -n "$unformatted" ]; then
+            echo "Nicht formatiert:"; echo "$unformatted"
+            echo "Bitte 'gofmt -w .' ausführen."
+            exit 1
+          fi
+
+      - name: Vet
+        run: go vet ./internal/...
+
+      - name: Tests
+        run: go test ./internal/... -count=1
+
+  # Vollständiger Lauf inklusive der macOS-Anteile (Schlüsselbund, Wails).
+  macos:
+    name: Vollständig (macOS)
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Wails-CLI
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.15.0
+
+      # Muss vor den Go-Tests laufen: main.go bindet frontend/dist per
+      # //go:embed ein, sonst scheitert schon das Kompilieren.
+      - name: Frontend bauen
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+
+      - name: Tests
+        run: go test ./... -count=1
+
+      - name: Race-Detektor
+        run: go test ./internal/... -race -count=1
+
+      - name: App bauen
+        run: $(go env GOPATH)/bin/wails build -platform darwin/universal -skipbindings
+
+      - name: Startet die App?
+        run: |
+          test -x build/bin/SoapMacUi.app/Contents/MacOS/SoapMacUi
+          file build/bin/SoapMacUi.app/Contents/MacOS/SoapMacUi | tee /dev/stderr | grep -q "universal binary"

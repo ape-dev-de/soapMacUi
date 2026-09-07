@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           targetNamespace="urn:example:bookstore:v1"
+           xmlns:tns="urn:example:bookstore:v1"
+           elementFormDefault="qualified">
+
+  <xs:include schemaLocation="base/common.xsd"/>
+
+  <!-- Abstrakte Basis: die abgeleiteten Typen müssen ihre Felder erben. -->
+  <xs:complexType name="AbstractCredentials" abstract="true">
+    <xs:sequence>
+      <xs:element name="user" type="tns:ShortText"/>
+      <xs:element name="password" type="tns:ShortText"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="LoginRequestType">
+    <xs:complexContent>
+      <xs:extension base="tns:AbstractCredentials">
+        <xs:sequence>
+          <xs:element name="clientId" type="tns:ShortText" minOccurs="0"/>
+        </xs:sequence>
+      </xs:extension>
+    </xs:complexContent>
+  </xs:complexType>
+
+  <xs:complexType name="Book">
+    <xs:sequence>
+      <xs:element name="isbn" type="tns:Isbn13"/>
+      <xs:element name="title" type="tns:ShortText"/>
+      <xs:element name="subtitle" type="tns:ShortText" minOccurs="0"/>
+      <!-- Array: der Generator soll mehrere Beispiele erzeugen. -->
+      <xs:element name="author" type="tns:ShortText" maxOccurs="unbounded"/>
+      <xs:element name="format" type="tns:Format"/>
+      <xs:element name="price" type="tns:Currency" nillable="true"/>
+    </xs:sequence>
+    <xs:attribute name="lang" type="xs:string" use="required"/>
+  </xs:complexType>
+
+  <xs:complexType name="FindRequestType">
+    <xs:complexContent>
+      <xs:extension base="tns:AbstractCredentials">
+        <!-- Auswahl: nur ein Zweig darf erzeugt werden. -->
+        <xs:choice>
+          <xs:element name="byIsbn" type="tns:Isbn13"/>
+          <xs:element name="byAuthor" type="tns:ShortText"/>
+          <xs:element name="byFormat" type="tns:Format"/>
+        </xs:choice>
+      </xs:extension>
+    </xs:complexContent>
+  </xs:complexType>
+
+  <xs:element name="login" type="tns:LoginRequestType"/>
+  <xs:element name="loginResponse">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="sessionId" type="tns:ShortText"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+
+  <xs:element name="findBooks" type="tns:FindRequestType"/>
+  <xs:element name="findBooksResponse">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="book" type="tns:Book" minOccurs="0" maxOccurs="unbounded"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+
+  <xs:element name="uploadCover">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="isbn" type="tns:Isbn13"/>
+        <xs:element name="image" type="xs:base64Binary"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+  <xs:element name="uploadCoverResponse">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="stored" type="xs:boolean"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+
+  <xs:element name="storeFault">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="code" type="tns:ShortText"/>
+        <xs:element name="message" type="tns:ShortText"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+</xs:schema>

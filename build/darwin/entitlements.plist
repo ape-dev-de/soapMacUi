@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- WebKit braucht mit Hardened Runtime JIT. Der eigentliche JIT läuft im
+       System-WebContent-Prozess, ohne das Entitlement gibt es je nach
+       Konfiguration trotzdem Ärger. -->
+  <key>com.apple.security.cs.allow-jit</key>
+  <true/>
+  <!-- Ausgehende Verbindungen zu den zu testenden Diensten. -->
+  <key>com.apple.security.network.client</key>
+  <true/>
+  <!-- Anhänge auswählen und Antworten speichern. -->
+  <key>com.apple.security.files.user-selected.read-write</key>
+  <true/>
+</dict>
+</plist>

@@ -1,0 +1,20 @@
+SoapMacUi
+Copyright 2026 Alexis Peters and the SoapMacUi contributors
+
+Dieses Produkt enthält Software, die im Rahmen des SoapMacUi-Projekts
+entwickelt wurde (https://github.com/apeters/soapmacui).
+
+Lizenziert unter der Apache License, Version 2.0. Eine Kopie der Lizenz
+liegt der Datei LICENSE bei.
+
+---
+
+Verwendete Komponenten von Dritten (jeweils unter eigener Lizenz):
+
+  Wails v2                  MIT       https://github.com/wailsapp/wails
+  CodeMirror 6              MIT       https://github.com/codemirror
+  keybase/go-keychain       MIT       https://github.com/keybase/go-keychain
+  esbuild                   MIT       https://github.com/evanw/esbuild
+
+Die vollständigen Lizenztexte der Abhängigkeiten stehen in den jeweiligen
+Modulen (go.sum bzw. frontend/node_modules).
