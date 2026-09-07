@@ -25,12 +25,23 @@ fi
 openssl x509 -in "$TMP/cert.pem" -noout -subject -enddate | sed 's/^/     /'
 
 echo "2/4  Kette von Apple holen"
-# Ohne die Zwischenstelle kann codesign die Kette nicht bilden.
-curl -fsS -o "$TMP/g2.cer"   https://www.apple.com/certificateauthority/DeveloperIDG2CA.cer
+# Es gibt zwei Zwischenstellen. Welche gebraucht wird, steht im Aussteller
+# des Zertifikats — die falsche ergäbe eine unvollständige Kette.
+ISSUER="$(openssl x509 -in "$TMP/cert.pem" -noout -issuer)"
+if grep -q "OU *= *G2" <<<"$ISSUER"; then
+  CA_URL="https://www.apple.com/certificateauthority/DeveloperIDG2CA.cer"
+  echo "     Aussteller: G2 Sub-CA"
+else
+  CA_URL="https://www.apple.com/certificateauthority/DeveloperIDCA.cer"
+  echo "     Aussteller: vorherige Sub-CA"
+  echo "     Achtung: diese Zwischenstelle läuft am 01.02.2027 ab, und damit"
+  echo "     auch dein Zertifikat. Ein neues mit G2 hält bis 2031."
+fi
+curl -fsS -o "$TMP/ca.cer"   "$CA_URL"
 curl -fsS -o "$TMP/root.cer" https://www.apple.com/appleca/AppleIncRootCertificate.cer
-openssl x509 -inform DER -in "$TMP/g2.cer"   -out "$TMP/g2.pem"
+openssl x509 -inform DER -in "$TMP/ca.cer"   -out "$TMP/ca.pem"
 openssl x509 -inform DER -in "$TMP/root.cer" -out "$TMP/root.pem"
-cat "$TMP/g2.pem" "$TMP/root.pem" > "$TMP/chain.pem"
+cat "$TMP/ca.pem" "$TMP/root.pem" > "$TMP/chain.pem"
 
 echo "3/4  Passen Zertifikat und Schlüssel zusammen?"
 A="$(openssl x509 -in "$TMP/cert.pem" -noout -modulus | openssl md5)"
