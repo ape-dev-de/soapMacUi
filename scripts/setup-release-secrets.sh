@@ -22,8 +22,38 @@ fi
 command -v gh >/dev/null || { echo "gh fehlt: brew install gh" >&2; exit 1; }
 gh auth status >/dev/null 2>&1 || { echo "Nicht angemeldet: gh auth login" >&2; exit 1; }
 
+# gh fragt das Terminal nach Farben und Grösse. Die Antworten landen auf
+# stdin und würden in der nächsten Eingabe stecken. Abschalten, was geht.
+export NO_COLOR=1 CLICOLOR=0 GH_NO_UPDATE_NOTIFIER=1
+
 echo "Repository: $REPO"
 echo
+
+# Reste im Eingabepuffer wegwerfen, bevor gefragt wird.
+drain_stdin() { while read -r -s -t 0.1 -n 4096 _ 2>/dev/null; do :; done; true; }
+
+# Steuerzeichen entfernen und Rand trimmen. Genau hier ging es schief:
+# eine Terminalantwort im Wert macht das Secret ungültig.
+clean() {
+  printf '%s' "$1" | LC_ALL=C tr -d '\000-\037\177' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//'
+}
+
+ask() {   # ask <Variablenname> <Prompt> <Regex> <Fehlertext> [-s]
+  local __var="$1" __prompt="$2" __re="$3" __err="$4" __silent="${5:-}" __val
+  while :; do
+    drain_stdin
+    if [ "$__silent" = "-s" ]; then
+      read -r -s -p "$__prompt" __val < /dev/tty; echo
+    else
+      read -r -p "$__prompt" __val < /dev/tty
+    fi
+    __val="$(clean "$__val")"
+    if [ -z "$__val" ]; then echo "     Eingabe ist leer." >&2; continue; fi
+    if [ -n "$__re" ] && ! [[ "$__val" =~ $__re ]]; then echo "     $__err" >&2; continue; fi
+    eval "$__var=\$__val"
+    return 0
+  done
+}
 
 # ---------------------------------------------------------------- Zertifikat
 
@@ -60,9 +90,11 @@ echo "  Gefunden:"
 for i in "${!IDS[@]}"; do echo "    [$i] ${IDS[$i]#*\"}" | sed 's/"$//'; done
 IDX=0
 if [ "${#IDS[@]}" -gt 1 ]; then
-  read -r -p "  Welche verwenden? [0-$(( ${#IDS[@]} - 1 ))] " IDX
+  drain_stdin
+  read -r -p "  Welche verwenden? [0-$(( ${#IDS[@]} - 1 ))] " IDX < /dev/tty
+  IDX="$(clean "$IDX")"
 fi
-SIGN_ID="$(sed -E 's/.*"(.*)"/\1/' <<<"${IDS[$IDX]}")"
+SIGN_ID="$(clean "$(sed -E 's/.*"(.*)"/\1/' <<<"${IDS[$IDX]}")")"
 HASH="$(awk '{print $2}' <<<"${IDS[$IDX]}")"
 echo "  Verwende: $SIGN_ID"
 
@@ -97,14 +129,21 @@ echo "  ✓ MACOS_CERT_P12, MACOS_CERT_PASSWORD, MACOS_SIGN_IDENTITY"
 
 echo
 echo "2/3  Notarisierung"
-TEAM_ID="$(sed -E 's/.*\(([A-Z0-9]+)\)$/\1/' <<<"$SIGN_ID")"
+TEAM_ID="$(clean "$(sed -E 's/.*\(([A-Z0-9]+)\)$/\1/' <<<"$SIGN_ID")")"
 echo "  Team-ID aus dem Zertifikat: $TEAM_ID"
-read -r -p "  Apple-ID (E-Mail): " APPLE_ID
+[[ "$TEAM_ID" =~ ^[A-Z0-9]{10}$ ]] || { echo "  Team-ID sieht falsch aus: '$TEAM_ID'" >&2; exit 1; }
+
+ask APPLE_ID "  Apple-ID (E-Mail): " \
+    '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$' \
+    "Das sieht nicht nach einer E-Mail-Adresse aus."
+
 echo
 echo "  Es wird ein *app-spezifisches* Passwort gebraucht, nicht das Passwort"
 echo "  deiner Apple-ID. Anlegen unter appleid.apple.com → Anmelden und"
-echo "  Sicherheit → App-spezifische Passwörter."
-read -r -s -p "  App-spezifisches Passwort: " APP_PW; echo
+echo "  Sicherheit → App-spezifische Passwörter. Form: abcd-efgh-ijkl-mnop"
+ask APP_PW "  App-spezifisches Passwort: " \
+    '^[A-Za-z]{4}-[A-Za-z]{4}-[A-Za-z]{4}-[A-Za-z]{4}$' \
+    "Erwartet wird die Form abcd-efgh-ijkl-mnop (vier Vierergruppen)." -s
 
 printf '%s' "$APPLE_ID" | gh secret set APPLE_ID --repo "$REPO"
 printf '%s' "$TEAM_ID"  | gh secret set APPLE_TEAM_ID --repo "$REPO"
