@@ -5,6 +5,24 @@ Ersatz für SoapUI (Intel-only, EOL auf Apple Silicon).
 
 Der Entwurf mit allen Entscheidungen steht in [PLAN.md](PLAN.md).
 
+![Request und Antwort](docs/screenshots/01-request-und-antwort.jpg)
+
+Links der Projektbaum mit den aus dem WSDL erkannten Operationen, oben die
+Endpoint-Tabs, in der Mitte der erzeugte Request und darunter die Antwort als
+klappbarer Baum. Rechts die Wire-Optionen, die die exakten Bytes bestimmen.
+
+![MTOM und Raw-Wire](docs/screenshots/02-mtom-raw-wire.jpg)
+
+Der Anhang erscheint im Editor als Datei-Chip — im Dokument steht weiterhin
+wörtlich `<xop:Include href="cid:…"/>`, ersetzt wird nur die Darstellung.
+Darunter der Mitschnitt dessen, was tatsächlich über die Leitung ging:
+`multipart/related`, Content-IDs, SOAPAction, alles im Original.
+
+![Anhänge mit Vorschau](docs/screenshots/03-anhaenge-vorschau.jpg)
+
+Anhänge von Request und Antwort mit Vorschau; die des Requests lassen sich
+direkt bearbeiten oder im externen Editor öffnen.
+
 ## Bauen und starten
 
 Voraussetzungen: Go, Node (für den Frontend-Build) und die Wails-CLI
@@ -158,11 +176,18 @@ Dafür nötige Repository-Secrets:
 | `APPLE_TEAM_ID` | Team-ID |
 | `APPLE_APP_PASSWORD` | app-spezifisches Passwort (nicht das Apple-ID-Passwort) |
 
-Zertifikat exportieren und kodieren:
+Die Secrets legt ein Skript an — es zeigt keine Geheimnisse an und schiebt
+das Zertifikat über eine Pipe direkt zu `gh`:
 
-    security find-identity -v -p codesigning       # Identität ablesen
-    # im Schlüsselbund als .p12 exportieren, dann:
-    base64 -i DeveloperID.p12 | pbcopy
+    ./scripts/setup-release-secrets.sh <owner>/<repo>
+
+Fehlt noch ein „Developer ID Application"-Zertifikat (ein „Apple Development"
+genügt **nicht**), führt dieser Weg dorthin:
+
+    ./scripts/make-csr.sh                       # CSR erzeugen
+    # developerid.csr auf developer.apple.com hochladen,
+    # Profile Type: G2 Sub-CA. Zertifikat herunterladen, dann:
+    ./scripts/import-developer-id.sh ~/Downloads/developerID_application.cer
 
 Release auslösen:
 
