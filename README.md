@@ -176,8 +176,14 @@ Dafür nötige Repository-Secrets:
 | `APPLE_TEAM_ID` | Team-ID |
 | `APPLE_APP_PASSWORD` | app-spezifisches Passwort (nicht das Apple-ID-Passwort) |
 
-Die Secrets legt ein Skript an — es zeigt keine Geheimnisse an und schiebt
-das Zertifikat über eine Pipe direkt zu `gh`:
+Das app-spezifische Passwort holst du dir auf **appleid.apple.com** →
+*Anmelden und Sicherheit* → *App-spezifische Passwörter* → *+*. Apple zeigt es
+in der Form `abcd-efgh-ijkl-mnop` genau einmal an. Es setzt aktivierte
+Zwei-Faktor-Authentifizierung voraus und lässt sich jederzeit widerrufen.
+
+Die Secrets legt ein Skript an. Das Transportpasswort der `.p12` erzeugt es
+selbst und legt es im Schlüsselbund ab — niemand muss es kennen. Abgefragt
+werden nur Apple-ID und app-spezifisches Passwort:
 
     ./scripts/setup-release-secrets.sh <owner>/<repo>
 

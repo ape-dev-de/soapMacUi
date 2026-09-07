@@ -50,7 +50,9 @@ B="$(openssl rsa  -in "$KEY"          -noout -modulus | openssl md5)"
 echo "     passt"
 
 echo "4/4  In den Schlüsselbund"
-read -r -s -p "     Transportpasswort für die .p12 (frei wählbar): " PW; echo
+# Das Transportpasswort schützt nur diese Datei und wird nirgends wieder
+# gebraucht — also würfeln statt abfragen. Niemand muss es kennen.
+PW="$(openssl rand -base64 24)"
 openssl pkcs12 -export -legacy \
   -inkey "$KEY" -in "$TMP/cert.pem" -certfile "$TMP/chain.pem" \
   -name "Developer ID Application" -passout "pass:$PW" -out "$TMP/developerid.p12" \
@@ -64,6 +66,11 @@ cp "$TMP/developerid.p12" "$OUT"
 chmod 600 "$OUT"
 security import "$OUT" -k "$HOME/Library/Keychains/login.keychain-db" \
   -P "$PW" -T /usr/bin/codesign -T /usr/bin/security
+
+# Passwort im Schlüsselbund hinterlegen, damit der Secrets-Schritt die .p12
+# öffnen kann, ohne dass es jemand abtippt.
+security delete-generic-password -s "soapmacui-p12" -a "developerid" >/dev/null 2>&1 || true
+security add-generic-password -s "soapmacui-p12" -a "developerid" -w "$PW" -U
 unset PW
 
 echo
@@ -77,7 +84,11 @@ Die .p12 liegt unter:
 Damit weiter:
   ./scripts/setup-release-secrets.sh <owner>/<repo>
 
-Danach die .p12 und den privaten Schlüssel sicher aufbewahren oder löschen —
-wer beides hat, kann in deinem Namen signieren:
+Das Transportpasswort der .p12 wurde zufällig erzeugt und liegt im
+Schlüsselbund unter dem Dienst "soapmacui-p12" — setup-release-secrets.sh
+holt es von dort. Du musst es dir nicht merken.
+
+Danach den privaten Schlüssel wegräumen; wer ihn hat, kann in deinem Namen
+signieren:
   rm -P ~/Desktop/DeveloperID-CSR/developerid.key
 EOF

@@ -62,28 +62,31 @@ SIGN_ID="$(sed -E 's/.*"(.*)"/\1/' <<<"${IDS[$IDX]}")"
 HASH="$(awk '{print $2}' <<<"${IDS[$IDX]}")"
 echo "  Verwende: $SIGN_ID"
 
+P12="${P12_PATH:-$HOME/Desktop/DeveloperID-CSR/developerid.p12}"
 TMP="$(mktemp -d)"
 trap 'if [ -f "$TMP/cert.p12" ]; then dd if=/dev/urandom of="$TMP/cert.p12" \
       bs=1024 count=64 conv=notrunc 2>/dev/null || true; fi; rm -rf "$TMP"' EXIT
 
-echo
-echo "  Für den Export wird ein Transportpasswort gebraucht. Es schützt nur die"
-echo "  temporäre Datei und wird gleich als Secret hinterlegt — denk dir eines aus."
-read -r -s -p "  Transportpasswort: " P12PW; echo
-read -r -s -p "  Wiederholen:       " P12PW2; echo
-[ "$P12PW" = "$P12PW2" ] || { echo "  Passwörter stimmen nicht überein." >&2; exit 1; }
-
-echo "  Exportiere (der Schlüsselbund fragt gleich nach Erlaubnis) …"
-security export -t identities -f pkcs12 -P "$P12PW" -o "$TMP/cert.p12" \
-  -k "$(security default-keychain -d user | tr -d ' "')" 2>/dev/null \
-  || security export -t identities -f pkcs12 -P "$P12PW" -o "$TMP/cert.p12"
-
-[ -s "$TMP/cert.p12" ] || { echo "  Export fehlgeschlagen." >&2; exit 1; }
+if [ -f "$P12" ] && P12PW="$(security find-generic-password -s soapmacui-p12 \
+                              -a developerid -w 2>/dev/null)"; then
+  # import-developer-id.sh hat schon eine .p12 gebaut und das zufällige
+  # Transportpasswort im Schlüsselbund hinterlegt — kein zweiter Export nötig.
+  echo "  Verwende $P12 (Passwort aus dem Schlüsselbund)"
+  cp "$P12" "$TMP/cert.p12"
+else
+  echo "  Keine vorbereitete .p12 gefunden — exportiere aus dem Schlüsselbund."
+  echo "  Das Transportpasswort wird zufällig erzeugt; du musst es dir nicht merken."
+  P12PW="$(openssl rand -base64 24)"
+  security export -t identities -f pkcs12 -P "$P12PW" -o "$TMP/cert.p12" \
+    -k "$(security default-keychain -d user | tr -d ' "')" 2>/dev/null \
+    || security export -t identities -f pkcs12 -P "$P12PW" -o "$TMP/cert.p12"
+  [ -s "$TMP/cert.p12" ] || { echo "  Export fehlgeschlagen." >&2; exit 1; }
+fi
 
 base64 -i "$TMP/cert.p12" | gh secret set MACOS_CERT_P12 --repo "$REPO"
-printf '%s' "$P12PW"      | gh secret set MACOS_CERT_PASSWORD --repo "$REPO"
-printf '%s' "$SIGN_ID"    | gh secret set MACOS_SIGN_IDENTITY --repo "$REPO"
-unset P12PW P12PW2
+printf '%s' "$P12PW"   | gh secret set MACOS_CERT_PASSWORD --repo "$REPO"
+printf '%s' "$SIGN_ID" | gh secret set MACOS_SIGN_IDENTITY --repo "$REPO"
+unset P12PW
 echo "  ✓ MACOS_CERT_P12, MACOS_CERT_PASSWORD, MACOS_SIGN_IDENTITY"
 
 # -------------------------------------------------------------- Notarisierung
