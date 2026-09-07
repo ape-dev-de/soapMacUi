@@ -28,8 +28,12 @@ echo
 # ---------------------------------------------------------------- Zertifikat
 
 echo "1/3  Signaturzertifikat"
-mapfile -t IDS < <(security find-identity -v -p codesigning 2>/dev/null \
-  | grep "Developer ID Application" || true)
+# Kein mapfile: macOS liefert Bash 3.2 aus, das gibt es erst ab Bash 4.
+IDS=()
+while IFS= read -r line; do
+  [ -n "$line" ] && IDS+=("$line")
+done < <(security find-identity -v -p codesigning 2>/dev/null \
+         | grep "Developer ID Application" || true)
 
 if [ "${#IDS[@]}" -eq 0 ]; then
   cat >&2 <<'HINT'
