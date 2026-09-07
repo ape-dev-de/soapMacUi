@@ -1,7 +1,16 @@
 name: Release
 
-# Ausgelöst durch einen Tag wie v0.1.0. Ohne die Signatur-Secrets läuft der
-# Build trotzdem durch — dann eben mit ad-hoc-Signatur statt notarisiert.
+# Zwei Jobs mit Absicht getrennt:
+#
+#   build     ist schnell und vorhersagbar. Er erzeugt das signierte Artefakt
+#             und legt es ab. Was hier durchläuft, ist gerettet.
+#   notarize  hängt von Apples Dienst ab und ist damit der unzuverlässige
+#             Teil. Scheitert oder hängt er, bleibt das signierte Ergebnis
+#             aus Job 1 erhalten und dieser Job allein lässt sich neu starten.
+#
+# Ohne diese Trennung nimmt ein stehender Notarisierungsschritt den fertigen
+# Build mit ins Grab — und `notarytool --wait` läuft ohne Zeitlimit bis zur
+# Sechs-Stunden-Grenze von GitHub.
 on:
   push:
     tags: ["v*"]
@@ -11,8 +20,13 @@ permissions:
   contents: write
 
 jobs:
-  release:
+  build:
+    name: Bauen und signieren
     runs-on: macos-14
+    timeout-minutes: 30
+    outputs:
+      signed: ${{ steps.sign.outputs.signed }}
+      version: ${{ steps.pack.outputs.version }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -55,7 +69,7 @@ jobs:
           KEYCHAIN=$RUNNER_TEMP/build.keychain
           KEYCHAIN_PW=$(uuidgen)
           security create-keychain -p "$KEYCHAIN_PW" "$KEYCHAIN"
-          security set-keychain-settings -lut 900 "$KEYCHAIN"
+          security set-keychain-settings -lut 1800 "$KEYCHAIN"
           security unlock-keychain -p "$KEYCHAIN_PW" "$KEYCHAIN"
           echo "$CERT_P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
           security import "$RUNNER_TEMP/cert.p12" -k "$KEYCHAIN" -P "$CERT_PASSWORD" \
@@ -71,33 +85,84 @@ jobs:
           codesign --verify --strict --verbose=2 build/bin/SoapMacUi.app
           echo "signed=true" >> "$GITHUB_OUTPUT"
 
-      - name: Notarisieren und stapeln
-        if: steps.sign.outputs.signed == 'true'
+      - name: Signiertes Artefakt ablegen
+        id: pack
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          [ -n "$VERSION" ] && [ "$VERSION" != "$GITHUB_REF_NAME" ] || VERSION="dev"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          ditto -c -k --keepParent build/bin/SoapMacUi.app "signed.zip"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: signed-app
+          path: signed.zip
+          retention-days: 7
+
+  notarize:
+    name: Notarisieren und veröffentlichen
+    needs: build
+    runs-on: macos-14
+    # Harte Obergrenze: lieber ein klarer Fehlschlag als sechs Stunden Leerlauf.
+    timeout-minutes: 60
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: signed-app
+
+      - name: Entpacken
+        run: |
+          ditto -x -k signed.zip .
+          codesign --verify --strict --verbose=2 SoapMacUi.app
+
+      - name: Notarisieren
+        id: notarize
+        if: needs.build.outputs.signed == 'true'
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
         run: |
-          # Schritt-env steht im if desselben Schritts nicht zur Verfügung,
-          # deshalb wird hier geprüft statt in der Bedingung.
           if [ -z "$APPLE_ID" ] || [ -z "$APPLE_TEAM_ID" ] || [ -z "$APPLE_APP_PASSWORD" ]; then
-            echo "Notarisierungs-Zugangsdaten fehlen — Schritt wird übersprungen."
+            echo "Zugangsdaten fehlen — Notarisierung übersprungen."
+            echo "stapled=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          ditto -c -k --keepParent build/bin/SoapMacUi.app "$RUNNER_TEMP/notarize.zip"
-          xcrun notarytool submit "$RUNNER_TEMP/notarize.zip" \
-            --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" \
-            --password "$APPLE_APP_PASSWORD" --wait
-          xcrun stapler staple build/bin/SoapMacUi.app
-          xcrun stapler validate build/bin/SoapMacUi.app
+
+          # --timeout begrenzt das Warten. Ohne das läuft notarytool endlos,
+          # wenn Apples Dienst nicht antwortet.
+          set +e
+          OUT="$(xcrun notarytool submit signed.zip \
+                  --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" \
+                  --password "$APPLE_APP_PASSWORD" \
+                  --timeout 25m --wait 2>&1)"
+          RC=$?
+          set -e
+          echo "$OUT"
+
+          ID="$(sed -nE 's/^ *id: ([0-9a-f-]{36})$/\1/p' <<<"$OUT" | head -1)"
+          if [ "$RC" -ne 0 ] || ! grep -q "status: Accepted" <<<"$OUT"; then
+            echo "::error::Notarisierung nicht erfolgreich (exit $RC)."
+            if [ -n "$ID" ]; then
+              echo "--- Protokoll von Apple ---"
+              xcrun notarytool log "$ID" \
+                --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" \
+                --password "$APPLE_APP_PASSWORD" || true
+            fi
+            exit 1
+          fi
+
+          xcrun stapler staple SoapMacUi.app
+          xcrun stapler validate SoapMacUi.app
+          spctl -a -vvv -t exec SoapMacUi.app || true
+          echo "stapled=true" >> "$GITHUB_OUTPUT"
 
       - name: Artefakt packen
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
-          [ -n "$VERSION" ] || VERSION="dev"
-          ditto -c -k --keepParent build/bin/SoapMacUi.app "SoapMacUi-$VERSION-macos-universal.zip"
-          shasum -a 256 "SoapMacUi-$VERSION-macos-universal.zip" \
-            > "SoapMacUi-$VERSION-macos-universal.zip.sha256"
+          VERSION="${{ needs.build.outputs.version }}"
+          NAME="SoapMacUi-$VERSION-macos-universal.zip"
+          ditto -c -k --keepParent SoapMacUi.app "$NAME"
+          shasum -a 256 "$NAME" > "$NAME.sha256"
           ls -lh SoapMacUi-*.zip*
 
       - uses: actions/upload-artifact@v4
@@ -118,5 +183,6 @@ jobs:
 
             Prüfsumme siehe beigelegte `.sha256`-Datei.
 
-            Ist das Artefakt notarisiert, startet die App per Doppelklick.
-            Andernfalls einmalig über Rechtsklick → Öffnen bestätigen.
+            ${{ steps.notarize.outputs.stapled == 'true'
+                && 'Signiert und notarisiert — startet per Doppelklick.'
+                || 'Nicht notarisiert: einmalig über Rechtsklick → Öffnen bestätigen.' }}
