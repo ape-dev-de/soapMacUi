@@ -119,10 +119,22 @@ func spillAttachment(r io.Reader, cid, ct, dir string) (ReceivedAttachment, erro
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return ReceivedAttachment{}, err
 	}
+	// Die Endung kommt aus dem Content-Type, nie aus der Content-ID. Sonst
+	// bestimmt die Gegenstelle, als was die Datei auf der Platte landet: eine
+	// Content-ID "bericht.terminal" ergäbe eine Datei, die beim Öffnen im
+	// Finder von LaunchServices ausgeführt statt angezeigt wird.
 	name := safeName(cid)
-	if ext := extForType(ct); ext != "" && filepath.Ext(name) == "" {
-		name += ext
+	name = strings.TrimSuffix(name, filepath.Ext(name))
+	// Was jetzt noch aus Punkten und Trennern besteht, taugt nicht als
+	// Dateiname — "..", "..." und "-" wären Pfadbestandteile statt Namen.
+	if !hasAlnum(name) {
+		name = "attachment"
 	}
+	ext := extForType(ct)
+	if ext == "" {
+		ext = ".bin"
+	}
+	name += ext
 	path := filepath.Join(dir, name)
 	f, err := os.Create(path)
 	if err != nil {
@@ -141,6 +153,16 @@ func spillAttachment(r io.Reader, cid, ct, dir string) (ReceivedAttachment, erro
 		Path:        path,
 		IsXML:       strings.Contains(ct, "xml"),
 	}, nil
+}
+
+// hasAlnum sagt, ob wenigstens ein Buchstabe oder eine Ziffer enthalten ist.
+func hasAlnum(s string) bool {
+	for _, r := range s {
+		if r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' {
+			return true
+		}
+	}
+	return false
 }
 
 func safeName(cid string) string {

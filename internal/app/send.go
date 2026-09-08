@@ -108,18 +108,27 @@ func (a *App) send(ctx context.Context, p *project.Project, r *project.Request, 
 		// Parts sind nach Spezifikation falsch und werden von strengen
 		// Servern abgelehnt.
 		atts := make([]soap.Attachment, 0, len(r.Attachments))
-		var skipped []string
+		var skipped, rejected []string
 		for _, at := range r.Attachments {
-			if bytes.Contains(encoded, []byte("cid:"+at.ID)) {
-				atts = append(atts, at)
-			} else {
+			if !bytes.Contains(encoded, []byte("cid:"+at.ID)) {
 				skipped = append(skipped, at.Name)
+				continue
 			}
+			if err := attachmentSource(p, at); err != nil {
+				rejected = append(rejected, fmt.Sprintf("%s (%v)", at.Name, err))
+				continue
+			}
+			atts = append(atts, at)
 		}
 		if len(skipped) > 0 {
 			res.Warnings = append(res.Warnings, fmt.Sprintf(
 				"Nicht mitgesendet, weil im Body kein Verweis darauf steht: %s",
 				strings.Join(skipped, ", ")))
+		}
+		if len(rejected) > 0 {
+			res.Warnings = append(res.Warnings, fmt.Sprintf(
+				"Nicht mitgesendet, weil die Quelle ausserhalb des Projekts liegt: %s",
+				strings.Join(rejected, ", ")))
 		}
 		if len(atts) == 0 && len(r.Attachments) > 0 {
 			res.Warnings = append(res.Warnings,
@@ -259,6 +268,57 @@ func (a *App) secretFor(c auth.Config) (string, error) {
 		return "", fmt.Errorf("kein Passwort hinterlegt")
 	}
 	return a.secrets.Get(c.SecretRef)
+}
+
+// attachDirName ist der Anhang-Ordner innerhalb eines Projekts.
+const attachDirName = "attachments"
+
+// inside sagt, ob path innerhalb von root liegt. Über filepath.Rel statt über
+// einen Präfixvergleich, damit ".." zuverlässig auffällt.
+func inside(root, path string) bool {
+	rel, err := filepath.Rel(filepath.Clean(root), filepath.Clean(path))
+	if err != nil {
+		return false
+	}
+	return rel != ".." && !strings.HasPrefix(rel, ".."+string(os.PathSeparator))
+}
+
+// attachmentSource stellt sicher, dass ein Anhang wirklich aus dem Anhang-
+// Ordner des Projekts stammt.
+//
+// Attachment.Path steht absolut in der Projektdatei. Geprüft wurde das bisher
+// nur in AttachExisting, also im Weg über die Oberfläche — ein Eintrag, der
+// bereits in einer weitergereichten project.json steht, ging ungeprüft ans
+// Netz. Angezeigt wird dabei Name, gelesen wird Path; die beiden dürfen
+// auseinanderfallen, ein harmlos benanntes "Logo.png" also auf ~/.ssh/id_rsa
+// zeigen.
+func attachmentSource(p *project.Project, at soap.Attachment) error {
+	if at.Path == "" {
+		// Aus einem Script erzeugt: liegt im Speicher, nie auf der Platte.
+		if len(at.Inline) == 0 {
+			return fmt.Errorf("weder Datei noch Inhalt")
+		}
+		return nil
+	}
+	dir := filepath.Join(p.Dir, attachDirName)
+	if !inside(dir, at.Path) {
+		return fmt.Errorf("liegt nicht im Anhang-Ordner")
+	}
+	// Ein Symlink im Anhang-Ordner käme sonst an der Prüfung vorbei. Verglichen
+	// wird gegen den ebenfalls aufgelösten Ordner — sonst scheitert die Prüfung
+	// schon daran, dass macOS Pfade wie /tmp selbst über einen Symlink führt.
+	real, err := filepath.EvalSymlinks(at.Path)
+	if err != nil {
+		return fmt.Errorf("nicht lesbar")
+	}
+	dirReal, err := filepath.EvalSymlinks(dir)
+	if err != nil {
+		dirReal = dir
+	}
+	if !inside(dirReal, real) {
+		return fmt.Errorf("verweist aus dem Anhang-Ordner heraus")
+	}
+	return nil
 }
 
 // mergeVars legt Projekt- und Endpoint-Variablen übereinander.

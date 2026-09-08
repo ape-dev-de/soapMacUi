@@ -41,6 +41,57 @@ type Loader struct {
 
 	visited map[string]bool
 	docs    int
+
+	// Herkunft des Wurzeldokuments. Sie entscheidet, wohin Imports führen
+	// dürfen — siehe allowRef.
+	rootRemote bool
+	rootDir    string
+}
+
+// isRemote sagt, ob eine Referenz über das Netz geht.
+func isRemote(ref string) bool {
+	u, err := url.Parse(ref)
+	return err == nil && (u.Scheme == "http" || u.Scheme == "https")
+}
+
+// localPath macht aus einer file://-URL oder einem blanken Pfad einen Pfad.
+func localPath(ref string) string {
+	if u, err := url.Parse(ref); err == nil && u.Scheme == "file" {
+		return u.Path
+	}
+	return ref
+}
+
+// allowRef begrenzt, wohin ein Import führen darf.
+//
+// Ein WSDL bestimmt über seine Imports, was als Nächstes gelesen wird. Ohne
+// Grenze liest ein über das Netz geladenes Dokument per
+// schemaLocation="file:///Users/…" beliebige lokale Dateien; deren Inhalt
+// landet anschliessend im WSDL-Cache des Projekts und ihr Wurzelelement in
+// der Fehlermeldung der Oberfläche.
+//
+// Quer über Hosts wird bewusst nicht eingeschränkt: Schemata liegen
+// regelmässig woanders als der Dienst, und interne Adressen sind bei einem
+// Werkzeug, das gegen Test- und Staging-Server läuft, der Normalfall.
+func (l *Loader) allowRef(ref string) error {
+	if isRemote(ref) {
+		return nil
+	}
+	if l.rootRemote {
+		return fmt.Errorf("Import abgelehnt: %s — ein über das Netz geladenes WSDL darf nur http(s) nachladen", ref)
+	}
+	if l.rootDir == "" {
+		return nil
+	}
+	abs, err := filepath.Abs(localPath(ref))
+	if err != nil {
+		return fmt.Errorf("Import abgelehnt: %s — Pfad nicht auflösbar", ref)
+	}
+	rel, err := filepath.Rel(l.rootDir, abs)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return fmt.Errorf("Import abgelehnt: %s — liegt ausserhalb des Ordners des WSDL", ref)
+	}
+	return nil
 }
 
 // NewLoader erzeugt einen Loader.
@@ -56,6 +107,15 @@ func (l *Loader) Load(ctx context.Context, rawurl string) (*Definitions, error) 
 	if l.MaxDocs == 0 {
 		l.MaxDocs = 200
 	}
+	// Die Herkunft der Wurzel steht vor dem ersten Fetch fest und ändert sich
+	// danach nicht mehr — sonst könnte ein Import die Grenze verschieben, die
+	// er selbst einhalten muss.
+	l.rootRemote = isRemote(rawurl)
+	if !l.rootRemote {
+		if abs, err := filepath.Abs(localPath(rawurl)); err == nil {
+			l.rootDir = filepath.Dir(abs)
+		}
+	}
 	d := newDefinitions()
 	if err := l.loadWSDL(ctx, d, rawurl); err != nil {
 		return nil, err
@@ -67,6 +127,9 @@ func (l *Loader) Load(ctx context.Context, rawurl string) (*Definitions, error) 
 }
 
 func (l *Loader) loadWSDL(ctx context.Context, d *Definitions, rawurl string) error {
+	if err := l.allowRef(rawurl); err != nil {
+		return err
+	}
 	key := normKey(rawurl)
 	if l.visited[key] {
 		return nil
@@ -135,6 +198,9 @@ func (l *Loader) loadSchemaRefs(ctx context.Context, d *Definitions, schema *xdo
 }
 
 func (l *Loader) loadSchema(ctx context.Context, d *Definitions, rawurl string) error {
+	if err := l.allowRef(rawurl); err != nil {
+		return err
+	}
 	key := normKey(rawurl)
 	if l.visited[key] {
 		return nil

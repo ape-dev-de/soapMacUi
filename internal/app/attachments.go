@@ -185,17 +185,41 @@ func (a *App) RevealPath(path string) error {
 	if path == "" {
 		return fmt.Errorf("kein Pfad angegeben")
 	}
-	if _, err := os.Stat(path); err != nil {
-		return fmt.Errorf("datei nicht gefunden: %s", path)
+	// Wie bei jedem anderen Pfad aus der Oberfläche: nur Projekt- und
+	// Cache-Ordner. Die Prüfung fehlte hier als einziger Stelle.
+	clean, err := a.allowedPath(path)
+	if err != nil {
+		return err
+	}
+	if _, err := os.Stat(clean); err != nil {
+		return fmt.Errorf("datei nicht gefunden: %s", clean)
 	}
 	switch runtime.GOOS {
 	case "darwin":
-		return exec.Command("open", "-R", path).Start()
+		return exec.Command("open", "-R", clean).Start()
 	case "windows":
-		return exec.Command("explorer", "/select,", path).Start()
+		return exec.Command("explorer", "/select,", clean).Start()
 	default:
-		return exec.Command("xdg-open", filepath.Dir(path)).Start()
+		return exec.Command("xdg-open", filepath.Dir(clean)).Start()
 	}
+}
+
+// launchable listet Endungen, die LaunchServices ausführt statt anzeigt.
+//
+// Anhänge sind fremder Inhalt: entweder aus einer weitergereichten Projekt-
+// datei oder direkt aus der Antwort einer Gegenstelle. "open" ohne -a übergibt
+// die Datei an LaunchServices, und die startet bei diesen Endungen ein
+// Programm — ohne Ausführbar-Bit, ohne Rückfrage.
+var launchable = map[string]bool{
+	".app": true, ".command": true, ".terminal": true, ".workflow": true,
+	".scpt": true, ".scptd": true, ".applescript": true, ".osas": true,
+	".sh": true, ".bash": true, ".zsh": true, ".csh": true, ".ksh": true,
+	".py": true, ".rb": true, ".pl": true, ".php": true, ".jar": true,
+	".pkg": true, ".mpkg": true, ".dmg": true, ".action": true,
+	".prefpane": true, ".qlgenerator": true, ".saver": true, ".service": true,
+	".definition": true, ".shortcut": true,
+	// Verweisdateien: sie zeigen auf ein Ziel, das der Absender bestimmt.
+	".webloc": true, ".inetloc": true, ".fileloc": true, ".url": true,
 }
 
 func copyFile(src, dst string) error {
@@ -319,9 +343,9 @@ func (a *App) AttachExisting(projectID, requestID, path string) (*soap.Attachmen
 	}
 	// Nur Dateien aus dem Anhang-Ordner des Projekts — kein beliebiger Pfad
 	// aus der Oberfläche.
-	dir := filepath.Join(p.Dir, "attachments")
+	dir := filepath.Join(p.Dir, attachDirName)
 	clean := filepath.Clean(path)
-	if !strings.HasPrefix(clean, dir+string(os.PathSeparator)) {
+	if !inside(dir, clean) {
 		return nil, fmt.Errorf("datei liegt nicht im Anhang-Ordner des Projekts")
 	}
 	st, err := os.Stat(clean)
@@ -498,6 +522,13 @@ func (a *App) OpenWith(path, app string) error {
 		return a.RevealPath(clean)
 	}
 	if app == "" {
+		// Ohne -a entscheidet LaunchServices, und bei diesen Endungen heisst
+		// das: ausführen. Mit -a landet die Datei dagegen in dem Programm, das
+		// ListEditors gefunden hat — einem Texteditor, der sie nur anzeigt.
+		if launchable[strings.ToLower(filepath.Ext(clean))] {
+			return fmt.Errorf("%s wird von macOS ausgeführt statt angezeigt — bitte ein Programm auswählen",
+				filepath.Base(clean))
+		}
 		return exec.Command("open", clean).Start()
 	}
 	return exec.Command("open", "-a", app, clean).Start()
