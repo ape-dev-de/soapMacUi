@@ -28,12 +28,12 @@ jobs:
       signed: ${{ steps.sign.outputs.signed }}
       version: ${{ steps.pack.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
           cache: true
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
@@ -93,7 +93,7 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           ditto -c -k --keepParent build/bin/SoapMacUi.app "signed.zip"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: signed-app
           path: signed.zip
@@ -106,7 +106,7 @@ jobs:
     # Harte Obergrenze: lieber ein klarer Fehlschlag als sechs Stunden Leerlauf.
     timeout-minutes: 60
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: signed-app
 
@@ -176,14 +176,14 @@ jobs:
           shasum -a 256 "$NAME" > "$NAME.sha256"
           ls -lh SoapMacUi-*.zip*
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: SoapMacUi-macos-universal
           path: SoapMacUi-*.zip*
 
       - name: Release anlegen
         if: startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: |
             SoapMacUi-*.zip
