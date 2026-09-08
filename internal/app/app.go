@@ -46,6 +46,7 @@ type Workspace struct {
 type WorkspaceEntry struct {
 	Dir      string    `json:"dir"`
 	Name     string    `json:"name"`
+	Color    string    `json:"color"`
 	LastOpen time.Time `json:"lastOpen"`
 }
 
@@ -71,27 +72,20 @@ type ProjectRef struct {
 	ID       string `json:"id"`
 	Name     string `json:"name"`
 	Dir      string `json:"dir"`
+	Color    string `json:"color"`
 	Open     bool   `json:"open"`
 	LastOpen string `json:"lastOpen"`
 }
 
 // ProjectView ist der Projektbaum ohne Bodies.
 type ProjectView struct {
-	ID           string             `json:"id"`
-	Name         string             `json:"name"`
-	Dir          string             `json:"dir"`
-	Interfaces   []InterfaceView    `json:"interfaces"`
-	Endpoints    []project.Endpoint `json:"endpoints"`
-	Environments []EnvView          `json:"environments"`
-	Variables    map[string]string  `json:"variables"`
-}
-
-// EnvView ist eine Umgebung.
-type EnvView struct {
-	ID         string            `json:"id"`
-	Name       string            `json:"name"`
-	EndpointID string            `json:"endpointId"`
-	Variables  map[string]string `json:"variables"`
+	ID         string             `json:"id"`
+	Name       string             `json:"name"`
+	Dir        string             `json:"dir"`
+	Color      string             `json:"color"`
+	Interfaces []InterfaceView    `json:"interfaces"`
+	Endpoints  []project.Endpoint `json:"endpoints"`
+	Variables  map[string]string  `json:"variables"`
 }
 
 // InterfaceView ist eine Schnittstelle mit ihren Operationen.
@@ -156,7 +150,7 @@ func (a *App) ListProjects() []ProjectRef {
 
 	out := make([]ProjectRef, 0, len(entries))
 	for _, e := range entries {
-		ref := ProjectRef{Name: e.Name, Dir: e.Dir, LastOpen: e.LastOpen.Format(time.RFC3339)}
+		ref := ProjectRef{Name: e.Name, Dir: e.Dir, Color: e.Color, LastOpen: e.LastOpen.Format(time.RFC3339)}
 		a.mu.RLock()
 		for id, p := range a.open {
 			if p.Dir == e.Dir {
@@ -336,6 +330,31 @@ func (a *App) UpdateEndpoint(projectID string, ep project.Endpoint) error {
 	return project.Save(p)
 }
 
+// SetProjectColor setzt die Kennfarbe des Projekts.
+//
+// Gespeichert wird nur ein Palettenschlüssel — siehe project.Colors. Die
+// Farbe steht zusätzlich im Arbeitsbereich, damit der Projektbaum auch
+// geschlossene Projekte farbig zeigen kann, ohne deren Datei zu öffnen.
+func (a *App) SetProjectColor(projectID, color string) (*ProjectView, error) {
+	if !project.ValidColor(color) {
+		return nil, fmt.Errorf("unbekannte Farbe %q", color)
+	}
+	p, err := a.get(projectID)
+	if err != nil {
+		return nil, err
+	}
+	p.Color = color
+	if err := project.Save(p); err != nil {
+		return nil, err
+	}
+	a.touchWorkspace(p)
+	return a.view(p), nil
+}
+
+// Palette liefert der Oberfläche die gültigen Farbschlüssel, damit die Auswahl
+// nicht an zwei Stellen gepflegt werden muss.
+func (a *App) Palette() []string { return project.Colors }
+
 // AddEndpoint legt einen weiteren Endpoint an.
 func (a *App) AddEndpoint(projectID, name, url string) (*ProjectView, error) {
 	p, err := a.get(projectID)
@@ -406,12 +425,9 @@ func (a *App) get(id string) (*project.Project, error) {
 }
 
 func (a *App) view(p *project.Project) *ProjectView {
-	v := &ProjectView{ID: p.ID, Name: p.Name, Dir: p.Dir, Variables: p.Variables}
+	v := &ProjectView{ID: p.ID, Name: p.Name, Dir: p.Dir, Color: p.Color, Variables: p.Variables}
 	for _, e := range p.Endpoints {
 		v.Endpoints = append(v.Endpoints, *e)
-	}
-	for _, e := range p.Environments {
-		v.Environments = append(v.Environments, EnvView{ID: e.ID, Name: e.Name, EndpointID: e.EndpointID, Variables: e.Variables})
 	}
 	for _, itf := range p.Interfaces {
 		iv := InterfaceView{ID: itf.ID, Name: itf.Name, WSDLURL: itf.WSDLURL, LoadedAt: itf.LoadedAt.Format(time.RFC3339)}

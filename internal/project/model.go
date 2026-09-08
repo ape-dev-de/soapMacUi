@@ -27,23 +27,19 @@ type Project struct {
 	Created       time.Time `json:"created"`
 	Modified      time.Time `json:"modified"`
 
-	Interfaces   []*Interface   `json:"interfaces"`
-	Endpoints    []*Endpoint    `json:"endpoints"`
-	Environments []*Environment `json:"environments"`
+	Interfaces []*Interface `json:"interfaces"`
+	Endpoints  []*Endpoint  `json:"endpoints"`
 
-	// Variables gelten projektweit und werden von Environment-Werten überlagert.
+	// Color ist ein Schlüssel aus der Palette (siehe Colors), kein Farbwert.
+	// Projektdateien sind fremder Inhalt; ein freier Wert landete sonst
+	// ungeprüft in einem style-Attribut der Oberfläche.
+	Color string `json:"color"`
+
+	// Variables gelten projektweit und werden von Endpoint-Werten überlagert.
 	Variables map[string]string `json:"variables"`
 
 	// Dir ist der Ordner auf der Platte und wird nicht serialisiert.
 	Dir string `json:"-"`
-}
-
-// Environment überlagert Variablen und wählt einen Endpoint vor.
-type Environment struct {
-	ID         string            `json:"id"`
-	Name       string            `json:"name"`
-	EndpointID string            `json:"endpointId"`
-	Variables  map[string]string `json:"variables"`
 }
 
 // Endpoint ist ein Zielsystem samt allem, was den Aufruf dorthin bestimmt.
@@ -210,4 +206,23 @@ func (p *Project) FindRequest(id string) (*Request, *Operation, *Interface) {
 		}
 	}
 	return nil, nil, nil
+}
+
+// Colors ist die Palette für die Projektkennzeichnung. Gespeichert wird nur
+// der Schlüssel; die Farbwerte selbst stehen im Stylesheet. Damit kann eine
+// weitergereichte Projektdatei keinen freien Wert in die Oberfläche tragen.
+var Colors = []string{"purple", "blue", "teal", "green", "amber", "orange", "red", "slate"}
+
+// ValidColor prüft einen Palettenschlüssel. Leer heisst "keine Farbe gesetzt"
+// und ist gültig — die Oberfläche zeigt dann die Vorgabe.
+func ValidColor(c string) bool {
+	if c == "" {
+		return true
+	}
+	for _, v := range Colors {
+		if v == c {
+			return true
+		}
+	}
+	return false
 }

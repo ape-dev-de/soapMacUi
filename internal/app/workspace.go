@@ -29,6 +29,7 @@ func (a *App) touchWorkspace(p *project.Project) {
 	for i := range a.workspace.Projects {
 		if a.workspace.Projects[i].Dir == p.Dir {
 			a.workspace.Projects[i].Name = p.Name
+			a.workspace.Projects[i].Color = p.Color
 			a.workspace.Projects[i].LastOpen = time.Now()
 			found = true
 			break
@@ -36,7 +37,7 @@ func (a *App) touchWorkspace(p *project.Project) {
 	}
 	if !found {
 		a.workspace.Projects = append(a.workspace.Projects, WorkspaceEntry{
-			Dir: p.Dir, Name: p.Name, LastOpen: time.Now(),
+			Dir: p.Dir, Name: p.Name, Color: p.Color, LastOpen: time.Now(),
 		})
 	}
 	if data, err := json.MarshalIndent(a.workspace, "", "  "); err == nil {

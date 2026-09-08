@@ -56,6 +56,30 @@ func Create(dir, name string) (*Project, error) {
 	return p, Save(p)
 }
 
+// InProject löst einen in der Projektdatei hinterlegten relativen Pfad gegen
+// das Projektverzeichnis auf und stellt sicher, dass er darin bleibt.
+//
+// Projektdateien werden weitergereicht — aus einem Kundenrepo, per Mail, aus
+// einem geteilten Ordner — und sind damit fremder Inhalt. Ein bodyFile wie
+// ../../../.ssh/id_rsa läse sonst beim Öffnen einen fremden Schlüssel in den
+// Request-Body, den ein Klick auf Senden an die ebenfalls dort hinterlegte
+// Adresse schickt; und das nächste Save schriebe an dieselbe Stelle zurück.
+func InProject(root, rel string) (string, error) {
+	if rel == "" {
+		return "", fmt.Errorf("leerer Pfad")
+	}
+	// Auf Windows fängt VolumeName Fälle ab, die IsAbs durchlässt (C:foo).
+	if filepath.IsAbs(rel) || filepath.VolumeName(rel) != "" {
+		return "", fmt.Errorf("absoluter Pfad nicht erlaubt: %s", rel)
+	}
+	root = filepath.Clean(root)
+	path := filepath.Clean(filepath.Join(root, rel))
+	if path != root && !strings.HasPrefix(path, root+string(os.PathSeparator)) {
+		return "", fmt.Errorf("pfad verlässt das Projektverzeichnis: %s", rel)
+	}
+	return path, nil
+}
+
 // Open liest ein Projekt samt aller Request-Bodies.
 func Open(dir string) (*Project, error) {
 	data, err := os.ReadFile(filepath.Join(dir, projectFile))
@@ -74,6 +98,11 @@ func Open(dir string) (*Project, error) {
 	if p.Variables == nil {
 		p.Variables = map[string]string{}
 	}
+	if !ValidColor(p.Color) {
+		// Fremder Wert aus einer weitergereichten Projektdatei: verwerfen
+		// statt ihn in die Oberfläche durchzureichen.
+		p.Color = ""
+	}
 
 	for _, itf := range p.Interfaces {
 		for _, op := range itf.Operations {
@@ -81,7 +110,16 @@ func Open(dir string) (*Project, error) {
 				if r.BodyFile == "" {
 					continue
 				}
-				b, err := os.ReadFile(filepath.Join(dir, r.BodyFile))
+				path, err := InProject(dir, r.BodyFile)
+				if err != nil {
+					// Eintrag entschärfen statt das Projekt zu verweigern: Save
+					// vergibt danach wieder requests/<id>.xml. Bliebe der Wert
+					// stehen, scheiterte jedes künftige Save an derselben Stelle.
+					r.Body = fmt.Sprintf("<!-- Body-Datei %s abgelehnt: %v -->", r.BodyFile, err)
+					r.BodyFile = ""
+					continue
+				}
+				b, err := os.ReadFile(path)
 				if err != nil {
 					// Ein fehlender Body darf das Projekt nicht unbrauchbar machen.
 					r.Body = fmt.Sprintf("<!-- Body-Datei %s nicht lesbar: %v -->", r.BodyFile, err)
@@ -111,7 +149,10 @@ func Save(p *Project) error {
 				if r.BodyFile == "" {
 					r.BodyFile = filepath.Join(requestsDir, r.ID+".xml")
 				}
-				path := filepath.Join(p.Dir, r.BodyFile)
+				path, err := InProject(p.Dir, r.BodyFile)
+				if err != nil {
+					return fmt.Errorf("body %s: %w", r.BodyFile, err)
+				}
 				if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 					return err
 				}
@@ -263,12 +304,6 @@ func LoadWSDL(ctx context.Context, p *Project, url string, fetch wsdl.Fetcher, g
 			p.Endpoints = append(p.Endpoints, NewEndpoint(NewID(), endpointLabel(ep), ep))
 		}
 	}
-	if len(p.Environments) == 0 && len(p.Endpoints) > 0 {
-		p.Environments = append(p.Environments, &Environment{
-			ID: NewID(), Name: "Default", EndpointID: p.Endpoints[0].ID, Variables: map[string]string{},
-		})
-	}
-
 	if existing != nil {
 		for i, e := range p.Interfaces {
 			if e == existing {
