@@ -9,7 +9,7 @@
   "author": { "name": "SoapMacUi contributors" },
   "info": {
     "productName": "SoapMacUi",
-    "productVersion": "0.1.1",
+    "productVersion": "0.1.2",
     "comments": "SOAP-Schnittstellen testen — nativ auf Apple Silicon"
   }
 }
