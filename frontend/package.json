@@ -6,7 +6,7 @@
     "build": "node build.mjs"
   },
   "devDependencies": {
-    "esbuild": "^0.25.0"
+    "esbuild": "^0.28.2"
   },
   "dependencies": {
     "@codemirror/autocomplete": "^6.18.0",
