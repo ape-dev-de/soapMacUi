@@ -11,7 +11,7 @@
     <header class="titlebar">
       <div class="tb-lights"></div>
       <div class="tb-title">
-        <span class="mark"></span>
+        <button class="mark" id="tbMark" title="Projektfarbe wählen"></button>
         <span id="tbProject">Kein Projekt geöffnet</span>
       </div>
       <div class="tb-actions">
@@ -33,9 +33,6 @@
             <button class="btn primary" id="btnFirstProject">Projekt anlegen</button>
           </div>
         </div>
-        <div class="side-foot">
-          <button class="btn wide" id="btnLoadWsdl" disabled>WSDL laden …</button>
-        </div>
       </aside>
 
       <!-- Hauptbereich -->
@@ -53,8 +50,6 @@
             <div class="pane-head">
               <div class="pane-title">
                 <span id="reqTitle">Request</span>
-                <span class="chip" id="reqAction" hidden></span>
-                <span class="chip alt" id="reqVersion" hidden></span>
               </div>
               <div class="tabs" id="reqViewTabs">
                 <button class="tab active" data-rv="body">Body</button>
@@ -62,10 +57,9 @@
                 <button class="tab" data-rv="headers">Header <span class="badge" id="reqHdrBadge" hidden>0</span></button>
               </div>
               <div class="pane-tools">
-                <button class="btn ghost small" id="btnEdFold" title="Alle Elemente zuklappen">⌄</button>
-                <button class="btn ghost small" id="btnEdUnfold" title="Alle Elemente aufklappen">⌃</button>
-                <button class="btn ghost small" id="btnAttach" title="Datei anhängen und xop:Include an der Cursorposition einsetzen">Anhängen ⇢ hier</button>
-                <button class="btn ghost small" id="btnFormat" title="Nur auf Klick — automatisch wird nie formatiert">Formatieren</button>
+                <button class="btn ghost icon" id="btnAttach" title="Datei anhängen und xop:Include an der Cursorposition einsetzen">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+                </button>
                 <button class="btn primary small" id="btnSend" disabled>Senden ⌘↵</button>
               </div>
             </div>
@@ -89,7 +83,9 @@
               </div>
             </div>
             <div class="pane-foot">
-              <span class="hint" id="editorHint">byte-genau — was hier steht, geht so raus</span>
+              <span class="chip" id="reqAction" hidden></span>
+              <span class="chip alt" id="reqVersion" hidden></span>
+              <span class="hint" id="editorHint" hidden></span>
               <span class="hint right" id="editorStats"></span>
             </div>
           </section>

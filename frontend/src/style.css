@@ -97,16 +97,52 @@ body::before {
 /* Custom Properties vererben sich: ohne dieses no-drag wären die Bedien-
    elemente im Titelbalken nicht mehr anklickbar, sondern nur Ziehfläche. */
 .titlebar .btn,
+.titlebar .mark,
 .titlebar input,
 .titlebar select { --wails-draggable: no-drag; }
 .tb-lights { width: 68px; flex: 0 0 68px; }
 .tb-title { display: flex; align-items: center; gap: 9px; font-weight: 590; letter-spacing: 0.1px; }
+/* Die Marke ist die Projektfarbe und ein Bedienelement, kein Logo. */
 .mark {
   width: 15px; height: 15px; border-radius: 5px;
-  background: linear-gradient(135deg, var(--purple-600), var(--magenta));
-  box-shadow: 0 0 14px rgba(167, 139, 250, 0.55);
+  padding: 0; border: 0; cursor: pointer;
+  background: linear-gradient(135deg, var(--dot-deep, var(--purple-600)), var(--dot, var(--magenta)));
+  box-shadow: 0 0 14px color-mix(in srgb, var(--dot, var(--purple-400)) 55%, transparent);
+  transition: transform .12s ease;
 }
+.mark:hover { transform: scale(1.14); }
+/* Ohne gesetzte Farbe ein hohler Ring — sonst sähe die Vorgabe aus wie eine
+   bewusst gewählte lila Kennzeichnung. */
+.mark.c-none {
+  background: none;
+  box-shadow: none;
+  border: 1.5px solid var(--text-faint);
+  opacity: .75;
+}
+.mark.c-none:hover { opacity: 1; border-color: var(--purple-400); }
 .tb-actions { margin-left: auto; --wails-draggable: no-drag; }
+
+/* ---------- Kennzeichnung ----------
+   Zwei Töne je Farbe statt einer Mischung zur Laufzeit: --dot trägt den
+   hellen Ton für Punkte und Ränder, --dot-deep den dunklen für Verläufe. */
+.c-purple { --dot: #a78bfa; --dot-deep: #7c3aed; }
+.c-blue   { --dot: #60a5fa; --dot-deep: #2563eb; }
+.c-teal   { --dot: #2dd4bf; --dot-deep: #0d9488; }
+.c-green  { --dot: #34d399; --dot-deep: #059669; }
+.c-amber  { --dot: #fbbf24; --dot-deep: #d97706; }
+.c-orange { --dot: #fb923c; --dot-deep: #ea580c; }
+.c-red    { --dot: #fb7185; --dot-deep: #e11d48; }
+.c-slate  { --dot: #94a3b8; --dot-deep: #475569; }
+/* c-none setzt bewusst nichts: dann greifen die Vorgaben in den var()-
+   Fallbacks, und die Marke in der Titelleiste bleibt der Lila-Verlauf. */
+
+.pdot {
+  width: 8px; height: 8px; border-radius: 50%; flex: 0 0 8px;
+  background: var(--dot, var(--text-faint));
+  box-shadow: 0 0 7px color-mix(in srgb, var(--dot, transparent) 55%, transparent);
+}
+/* Ohne gesetzte Farbe bleibt der Punkt ein stiller Platzhalter. */
+.c-none.pdot { box-shadow: none; opacity: .4; }
 
 /* ---------- Grundraster ---------- */
 .body { flex: 1; display: flex; min-height: 0; }
@@ -124,8 +160,9 @@ body::before {
 }
 .side-title { font-size: 11px; font-weight: 680; letter-spacing: 0.7px; text-transform: uppercase; color: var(--text-faint); }
 .side-scroll { flex: 1; overflow-y: auto; padding: 2px 8px 10px; }
-.side-foot { padding: 10px 12px 12px; border-top: 1px solid var(--line-soft); }
-
+.tree-row .pdot { margin-right: 6px; }
+/* Unterscheidet gleichnamige Operationen aus verschiedenen Ports. */
+.tree-row .sub { font-size: 10px; color: var(--text-faint); font-family: var(--mono); margin-left: 6px; }
 .main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
 
 .inspector {
@@ -166,7 +203,6 @@ body::before {
 }
 .ep-tab .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text-faint); }
 .ep-tab.active .dot { background: var(--magenta); box-shadow: 0 0 8px var(--magenta); }
-.ep-tab .url { font-size: 10.5px; opacity: .62; font-family: var(--mono); }
 
 /* ---------- Split ---------- */
 .split { flex: 1; display: flex; flex-direction: column; min-height: 0; }
@@ -345,6 +381,9 @@ body::before {
 .btn.ghost { background: transparent; border-color: transparent; color: var(--text-dim); }
 .btn.ghost:hover { background: rgba(167, 139, 250, 0.11); color: var(--text); }
 .btn.icon { width: 25px; height: 25px; padding: 0; display: grid; place-items: center; font-size: 15px; line-height: 1; }
+/* Icons als Inline-SVG statt Emoji: sie erben so die Farbe des Buttons und
+   machen den Hover-Wechsel von --text-dim auf --text mit. */
+.btn.icon svg { width: 14px; height: 14px; }
 .btn.wide { width: 100%; }
 .btn.small { padding: 4px 10px; font-size: 11.5px; }
 
@@ -354,6 +393,15 @@ body::before {
   background: rgba(167, 139, 250, 0.14); color: var(--purple-300);
 }
 .chip.alt { background: rgba(52, 211, 153, 0.13); color: var(--ok); }
+/* In der Fussleiste darf die SOAPAction nicht umbrechen — sie ist oft lang
+   und würde die Zeile sonst auf zwei Zeilen aufziehen. Voller Wert im Tooltip. */
+.pane-foot .chip {
+  flex: 0 1 auto; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.pane-foot .chip.alt { flex: 0 0 auto; }
+.pane-foot .hint { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pane-foot .hint.right { flex: 0 0 auto; }
 
 /* ---------- Statusleiste ---------- */
 .statusbar {

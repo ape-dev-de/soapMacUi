@@ -97,6 +97,7 @@ function renderTree() {
       twisty: true,
       active: isActive,
       title: ref.dir,
+      color: ref.color || "",
       onClick: () => selectProject(ref),
       onDblClick: () => toggleExpanded(key),
     });
@@ -116,6 +117,32 @@ function renderTree() {
       hint.textContent = "Noch kein WSDL geladen.";
       kids.appendChild(hint);
     } else {
+      // Endpoints stehen quer zu Schnittstellen und Operationen — deshalb
+      // neben ihnen und nicht darunter. Ohne diesen Knoten tauchte ein
+      // Endpoint nur in der Tab-Leiste auf, ohne erkennbare Herkunft.
+      if (pv.endpoints?.length) {
+        const enode = el("div", "tree-node");
+        enode.appendChild(row({
+          id: "e:" + pv.id,
+          label: "Endpoints",
+          twisty: true,
+          tag: String(pv.endpoints.length),
+        }));
+        const ekids = el("div", "tree-children");
+        for (const ep of pv.endpoints) {
+          ekids.appendChild(row({
+            id: "ep:" + ep.id,
+            label: ep.name || "Endpoint",
+            sub: shortUrl(ep.url),
+            active: ep.id === S.endpointId,
+            title: ep.url,
+            onClick: () => selectEndpoint(ep.id),
+          }));
+        }
+        enode.appendChild(ekids);
+        kids.appendChild(enode);
+      }
+
       for (const itf of pv.interfaces) {
         const inode = el("div", "tree-node");
         inode.appendChild(row({
@@ -124,12 +151,31 @@ function renderTree() {
         }));
         const ikids = el("div", "tree-children");
 
+        // Zwei Ports über demselben portType erzeugen dieselbe Operation
+        // zweimal — siehe docs/wsdl-modell.md. Technisch sind sie über eigene
+        // IDs getrennt, im Baum stünden sie ohne Zusatz zweimal gleich da.
+        const anzahl = new Map();
+        const ports = new Map();
+        for (const op of itf.operations || []) {
+          anzahl.set(op.name, (anzahl.get(op.name) || 0) + 1);
+          if (!ports.has(op.name)) ports.set(op.name, new Set());
+          ports.get(op.name).add(op.port || "");
+        }
+        // Der Port reicht als Unterscheidung, solange er eindeutig ist;
+        // kommt derselbe Portname in zwei Services vor, muss der Service mit.
+        const zusatz = (op) => {
+          const n = anzahl.get(op.name) || 0;
+          if (n < 2) return null;
+          return ports.get(op.name).size === n ? op.port : `${op.service} / ${op.port}`;
+        };
+
         for (const op of itf.operations || []) {
           const onode = el("div", "tree-node");
           const many = (op.requests?.length || 0) > 1;
           const opRowEl = row({
             id: "o:" + op.id,
             label: op.name,
+            sub: zusatz(op),
             twisty: many,
             tag: op.retired ? "entfallen" : (op.suggestMtom ? "MTOM" : null),
             onClick: many ? null : () => openRequest(op.requests?.[0]?.id, op),
@@ -175,6 +221,7 @@ async function selectProject(ref) {
     const pv = await go().OpenProject(ref.dir);
     S.projectId = pv.id;
     S.project = pv;
+    expanded.add("e:" + pv.id);
     S.requestId = null;
     S.request = null;
     S.endpointId = null;
@@ -205,12 +252,16 @@ function toggleExpanded(key) {
   renderTree();
 }
 
-function row({ id, label, twisty, tag, onClick, onDblClick, active, title }) {
+function row({ id, label, twisty, tag, sub, onClick, onDblClick, active, title, color }) {
   const r = el("div", "tree-row" + (active ? " active" : ""));
   if (title) r.title = title;
   const tw = el("span", "tw" + (expanded.has(id) ? " open" : ""), twisty ? "▶" : "");
   r.appendChild(tw);
+  // Der Punkt kommt nur, wenn eine Farbe gesetzt ist — sonst rückt der Text
+  // in der Baumhierarchie unterschiedlich weit ein.
+  if (color !== undefined) r.appendChild(el("span", "pdot " + colorClass(color)));
   r.appendChild(el("span", "lbl", label));
+  if (sub) r.appendChild(el("span", "sub", sub));
   if (tag) r.appendChild(el("span", "tag", tag));
 
   let timer = null;
@@ -260,17 +311,22 @@ function renderEndpoints() {
     t.title = ep.url;
     // Tabwechsel richtet den *aktuellen* Request um. Body, Header und
     // Anhänge bleiben stehen — kein Neuaufsetzen, kein Copy-Paste.
-    t.onclick = () => {
-      S.endpointId = ep.id;
-      const at = activeTab();
-      if (at) at.endpointId = ep.id;   // der Tab behält sein Ziel
-      renderEndpoints();
-      renderReqTabs();
-      fillInspector();
-      showResultFor();
-    };
+    t.onclick = () => selectEndpoint(ep.id);
     bar.appendChild(t);
   }
+}
+
+/* Endpoint wählen. Richtet den *aktuellen* Request um; Body, Header und
+ * Anhänge bleiben stehen — kein Neuaufsetzen, kein Copy-Paste. */
+function selectEndpoint(id) {
+  S.endpointId = id;
+  const at = activeTab();
+  if (at) at.endpointId = id;   // der Tab behält sein Ziel
+  renderEndpoints();
+  renderTree();
+  renderReqTabs();
+  fillInspector();
+  showResultFor();
 }
 
 function shortUrl(u) {
@@ -292,6 +348,10 @@ function currentEndpoint() {
 // CodeMirror normalisiert das Dokument nicht.
 const editor = SoapEditor.mount($("editorHost"), {
   onChange: () => { S.dirty = true; updateStats(); markDirty(); },
+  // Ersetzt den früheren Formatieren-Knopf in der Werkzeugleiste: die Aktion
+  // steht sonst nur noch im Kontextmenü, und ein Rechtsklick ist für etwas,
+  // das man mehrmals pro Request braucht, zu umständlich.
+  keymap: [{ key: "Shift-Alt-f", preventDefault: true, run: () => { formatBody(); return true; } }],
   // Klick auf einen Datei-Chip im Editor führt zur Anhang-Liste.
   onAttachmentRemove: (cid, from, to) => removeReferenceAt(cid, from, to),
   onAttachmentReplace: (cid, from, to) => replaceAttachmentAt(cid, from, to),
@@ -310,10 +370,13 @@ function updateStats() {
 }
 
 function markDirty() {
-  $("editorHint").textContent = S.dirty
-    ? "ungespeicherte Änderung — ⌘S"
-    : "byte-genau — was hier steht, geht so raus";
-  $("editorHint").style.color = S.dirty ? "var(--warn)" : "";
+  // Nur im geänderten Zustand sichtbar. Der frühere Dauerhinweis auf das
+  // byte-genaue Senden stand hier permanent, ohne je etwas zu melden — das
+  // Verhalten steht in den Wire-Optionen.
+  const n = $("editorHint");
+  n.textContent = S.dirty ? "ungespeicherte Änderung — ⌘S" : "";
+  n.style.color = S.dirty ? "var(--warn)" : "";
+  n.hidden = !S.dirty;
   renderReqTabs();
 }
 
@@ -348,6 +411,8 @@ async function openRequest(requestId, op, tabId = null) {
 function setChip(id, text) {
   const n = $(id);
   n.textContent = text;
+  // Der Chip wird in der Fussleiste gekürzt — der volle Wert bleibt greifbar.
+  n.title = text;
   n.hidden = !text;
 }
 
@@ -532,6 +597,17 @@ function highlightXML(src) {
     .split(A0).join('<span class="a">').split(A1).join("</span>")
     .split(V0).join('<span class="v">').split(V1).join("</span>")
     .split(C0).join('<span class="c">').split(C1).join("</span>");
+}
+
+/* ------------------------------------------------------------- Kennzeichnung */
+
+/* Aus der Projektdatei kommt nur ein Palettenschlüssel, nie ein Farbwert. Die
+ * Klasse wird deshalb gegen die bekannte Liste geprüft: eine weitergereichte
+ * project.json soll keine beliebige Klasse an ein Element hängen können. */
+const COLORS = ["purple", "blue", "teal", "green", "amber", "orange", "red", "slate"];
+
+function colorClass(c) {
+  return COLORS.includes(c) ? "c-" + c : "c-none";
 }
 
 /* ------------------------------------------------------------------ Inspektor */
@@ -991,6 +1067,16 @@ async function insertReference(a) {
   }
 }
 
+/* Formatieren passiert nur auf Ausdrücklichkeit — nie automatisch, weil der
+ * Body byte-genau rausgeht und eine stille Umformatierung genau das kaputt
+ * macht, was man an einem SOAP-Werkzeug braucht. */
+async function formatBody() {
+  try {
+    editor.value = await go().FormatXML(editor.value);
+    S.dirty = true; updateStats(); markDirty();
+  } catch (e) { status("Formatieren: " + e, "err"); }
+}
+
 /* attachHere erledigt in einem Klick, was in SoapUI vier Schritte sind:
  * Datei wählen, Content-ID erzeugen, Verweis an die Cursorstelle setzen,
  * MTOM einschalten. Der Editorinhalt geht mit, damit ungespeicherte
@@ -1234,23 +1320,52 @@ async function closeTab(tabId) {
 
 /* ------------------------------------------------------------------ Kontextmenü */
 
+/* Untermenüs schliessen mit Nachlauffrist.
+ *
+ * Der Weg vom Elternpunkt zum Untermenü führt diagonal über die Nachbarn im
+ * Hauptmenü. Schlösse deren mouseenter das Untermenü sofort, wäre es nicht
+ * erreichbar — man muss die Maus erst hinausbewegen, um sie hineinzubewegen.
+ * Die Frist überbrückt genau diese Strecke; das Untermenü selbst bricht sie
+ * ab, sobald der Zeiger ankommt. */
+let subTimer = null;
+
+function cancelSubClose() {
+  clearTimeout(subTimer);
+  subTimer = null;
+}
+
+function scheduleSubClose() {
+  clearTimeout(subTimer);
+  subTimer = setTimeout(() => {
+    const s = document.getElementById("ctxSub");
+    if (s) s.remove();
+  }, 260);
+}
+
 function hideCtx() {
+  cancelSubClose();
   $("ctxMenu").hidden = true;
   const sub = document.getElementById("ctxSub");
   if (sub) sub.remove();
 }
 
-function buildItems(target, items) {
+/* inSub unterscheidet Haupt- und Untermenü. Einträge im Untermenü dürfen sein
+ * Schliessen nicht planen — sie liegen darin, und der Zeiger, der sie
+ * überfährt, ist der Beleg dafür, dass es offen bleiben soll. */
+function buildItems(target, items, inSub = false) {
   for (const it of items) {
     if (it === "-") { target.appendChild(el("div", "sep")); continue; }
     const b = el("button", null, it.label);
+    if (it.color !== undefined) {
+      b.prepend(el("span", "pdot " + colorClass(it.color)));
+    }
     if (it.sub) {
       b.appendChild(el("span", "kbd", "▸"));
-      b.onmouseenter = () => openSub(b, it.sub);
-      b.onclick = (e) => { e.stopPropagation(); openSub(b, it.sub); };
+      b.onmouseenter = () => { cancelSubClose(); openSub(b, it.sub); };
+      b.onclick = (e) => { e.stopPropagation(); cancelSubClose(); openSub(b, it.sub); };
     } else {
       if (it.kbd) b.appendChild(el("span", "kbd", it.kbd));
-      b.onmouseenter = () => { const s = document.getElementById("ctxSub"); if (s) s.remove(); };
+      if (!inSub) b.onmouseenter = scheduleSubClose;
       b.onclick = () => { hideCtx(); it.run?.(); };
     }
     b.disabled = !!it.disabled;
@@ -1264,12 +1379,17 @@ function openSub(anchor, items) {
   if (!items.length) return;
   const m = el("div", "ctx");
   m.id = "ctxSub";
-  buildItems(m, items);
+  buildItems(m, items, true);
+  // Solange der Zeiger im Untermenü ist, wird nichts geschlossen.
+  m.onmouseenter = cancelSubClose;
+  m.onmouseleave = scheduleSubClose;
   document.body.appendChild(m);
   const r = anchor.getBoundingClientRect();
   const box = m.getBoundingClientRect();
-  m.style.left = Math.min(r.right - 4, window.innerWidth - box.width - 8) + "px";
-  m.style.top = Math.min(r.top - 5, window.innerHeight - box.height - 8) + "px";
+  // Sechs Pixel Überlappung: zwischen Elternpunkt und Untermenü darf keine
+  // Lücke liegen, sonst fällt der Zeiger unterwegs ins Hauptmenü zurück.
+  m.style.left = Math.min(r.right - 6, window.innerWidth - box.width - 8) + "px";
+  m.style.top = Math.min(r.top - 6, window.innerHeight - box.height - 8) + "px";
 }
 
 function showCtx(x, y, items) {
@@ -1281,6 +1401,31 @@ function showCtx(x, y, items) {
   const r = m.getBoundingClientRect();
   m.style.left = Math.min(x, window.innerWidth - r.width - 8) + "px";
   m.style.top = Math.min(y, window.innerHeight - r.height - 8) + "px";
+}
+
+/* Farbwähler für ein Projekt. Setzen geht nur beim geöffneten Projekt: die
+ * Farbe landet in der Projektdatei, und dafür muss sie geladen sein. */
+function colorSub(projectId, current) {
+  const namen = {
+    purple: "Lila", blue: "Blau", teal: "Türkis", green: "Grün",
+    amber: "Bernstein", orange: "Orange", red: "Rot", slate: "Grau",
+  };
+  const eintrag = (key, label) => ({
+    label: (current === key || (!current && !key) ? "● " : "   ") + label,
+    color: key,
+    run: () => setProjectColor(projectId, key),
+  });
+  return [eintrag("", "keine"), "-", ...COLORS.map((c) => eintrag(c, namen[c]))];
+}
+
+async function setProjectColor(projectId, color) {
+  try {
+    const pv = await go().SetProjectColor(projectId, color);
+    S.project = pv;
+    await refreshProject();
+  } catch (e) {
+    status("Farbe setzen: " + e, "err");
+  }
 }
 
 /* Untermenü mit allen offenen Requests — zum Springen, und es zeigt
@@ -1354,7 +1499,7 @@ function ctxItems(e) {
       { label: "Alle Elemente aufklappen", run: () => editor.unfoldAll() },
       "-",
       { label: "Datei anhängen & Verweis hier einsetzen", run: attachHere },
-      { label: "Formatieren", run: () => $("btnFormat").click() },
+      { label: "Formatieren", kbd: "⇧⌥F", run: formatBody },
       "-",
       { label: "Senden", kbd: "⌘↵", disabled: $("btnSend").disabled, run: send },
       "-",
@@ -1381,6 +1526,12 @@ function ctxItems(e) {
       { label: "Im Finder zeigen", run: () => go().RevealPath(dir).catch((e) => status("Finder: " + e, "err")) },
       "-",
       { label: "WSDL neu indizieren …", disabled: S.projectId !== (S.projects.find((p) => p.dir === dir)?.id), run: loadWsdl },
+      "-",
+      {
+        label: "Farbe",
+        disabled: S.projectId !== (S.projects.find((p) => p.dir === dir)?.id),
+        sub: colorSub(S.projectId, S.project?.color || ""),
+      },
       "-",
       { label: "Aus der Liste entfernen", run: () => removeProject(dir, name, false) },
       { label: "In den Papierkorb legen …", run: () => removeProject(dir, name, true) },
@@ -1420,7 +1571,7 @@ async function refreshProject() {
   S.project = await go().GetProject(S.projectId);
   if (!S.endpointId && S.project.endpoints?.length) S.endpointId = S.project.endpoints[0].id;
   $("tbProject").textContent = S.project.name;
-  $("btnLoadWsdl").disabled = false;
+  $("tbMark").className = "mark " + colorClass(S.project.color || "");
   $("btnSend").disabled = !S.requestId || !S.endpointId;
   renderTree();
   renderEndpoints();
@@ -1474,6 +1625,7 @@ async function newProject() {
     const pv = await go().CreateProject(r.value);
     S.projectId = pv.id;
     S.project = pv;
+    expanded.add("e:" + pv.id);
     S.requestId = null;
     S.request = null;
     S.endpointId = null;
@@ -1542,16 +1694,15 @@ async function addEndpoint() {
 function wire() {
   $("btnNewProject").onclick = newProject;
   $("btnFirstProject") && ($("btnFirstProject").onclick = newProject);
-  $("btnLoadWsdl").onclick = loadWsdl;
   $("btnAddEndpoint").onclick = addEndpoint;
   $("btnSend").onclick = send;
-  $("btnFormat").onclick = async () => {
-    try {
-      editor.value = await go().FormatXML(editor.value);
-      S.dirty = true; updateStats(); markDirty();
-    } catch (e) { status("Formatieren: " + e, "err"); }
-  };
   $("btnInspector").onclick = () => $("inspector").classList.toggle("collapsed");
+  // Die Marke ist die Projektfarbe, kein Logo: ein Klick öffnet die Auswahl.
+  $("tbMark").onclick = (e) => {
+    if (!S.projectId) return;
+    const r = e.currentTarget.getBoundingClientRect();
+    showCtx(r.left, r.bottom + 6, colorSub(S.projectId, S.project?.color || ""));
+  };
 
   // Doppelklick auf den Titelbalken zoomt — Standardverhalten auf dem Mac.
   // Wails startet den Zieh-Vorgang nur bei detail===1, ein Doppelklick
@@ -1570,8 +1721,6 @@ function wire() {
   for (const t of document.querySelectorAll("#reqViewTabs .tab")) {
     t.onclick = () => showReqView(t.dataset.rv);
   }
-  $("btnEdFold").onclick = () => { showReqView("body"); editor.foldAll(); };
-  $("btnEdUnfold").onclick = () => { showReqView("body"); editor.unfoldAll(); };
 
   $("authKind").onchange = () => { toggleAuth(); applyInspector(); };
   for (const id of ["epName", "epUrl", "authUser", "authPwType", "authNonce", "authCreated",
