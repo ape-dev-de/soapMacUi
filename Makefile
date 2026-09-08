@@ -14,7 +14,7 @@ NOTARY_PROFILE ?= notary
 APP      := build/bin/SoapMacUi.app
 WAILS    := $(shell go env GOPATH)/bin/wails
 
-.PHONY: help dev build build-universal build-win check-sign-id sign notarize test lint clean run bin
+.PHONY: help dev build build-universal build-win check-sign-id sign notarize test test-race test-extern lint clean run bin
 
 help:
 	@grep -E '^[a-z-]+:.*?##' $(MAKEFILE_LIST) | sed 's/:.*##/\t/' | column -t -s "$$(printf '\t')"
@@ -57,6 +57,12 @@ notarize: sign  ## Notarisieren (Developer-ID-Zertifikat + NOTARY_PROFILE nötig
 
 test:           ## Alle Tests, inklusive der Beispieldienste in testdata/
 	go test ./... -count=1
+
+test-race:      ## Wie test, mit Race-Detektor (läuft so auch in der CI)
+	go test ./internal/... -race -count=1
+
+test-extern:    ## Gegen echte öffentliche SOAP-Dienste — braucht Netz, nie in der CI
+	go test ./internal/wsdl/... -tags extern -count=1 -run TestExterne -v
 
 lint:           ## Formatierung und Vet
 	gofmt -l . | grep -v '^frontend/' || true
