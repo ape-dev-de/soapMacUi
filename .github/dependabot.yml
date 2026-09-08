@@ -1,0 +1,45 @@
+# Aktualisierungen gebündelt statt einzeln: die Oberfläche hängt an acht
+# @codemirror/*-Paketen, die zusammen versioniert werden wollen. Ohne Gruppen
+# öffnet Dependabot dafür acht PRs, die sich gegenseitig blockieren.
+version: 2
+
+updates:
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: "go-deps"
+    groups:
+      # Wails ist der Kern und bringt bei jedem Sprung Verhaltensänderungen
+      # mit — der gehört einzeln angesehen, nicht in einem Sammel-PR.
+      go-minor-patch:
+        patterns: ["*"]
+        exclude-patterns: ["github.com/wailsapp/wails/v2"]
+        update-types: ["minor", "patch"]
+
+  - package-ecosystem: npm
+    directory: /frontend
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: "frontend-deps"
+    groups:
+      codemirror:
+        patterns: ["@codemirror/*", "@lezer/*"]
+      build:
+        patterns: ["esbuild"]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: "ci"
+    groups:
+      actions:
+        patterns: ["*"]

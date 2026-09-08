@@ -111,9 +111,15 @@ jobs:
           name: signed-app
 
       - name: Entpacken
-        run: |
-          ditto -x -k signed.zip .
-          codesign --verify --strict --verbose=2 SoapMacUi.app
+        run: ditto -x -k signed.zip .
+
+      # Nur wenn in Job 1 wirklich signiert wurde. Ohne hinterlegtes Zertifikat
+      # trägt das Bundle bloss die ad-hoc-Signatur von Wails, hat also kein
+      # _CodeSignature-Verzeichnis — die Prüfung schlüge fehl und nähme den
+      # ganzen Job mit, obwohl der unsignierte Weg ausdrücklich vorgesehen ist.
+      - name: Signatur prüfen
+        if: needs.build.outputs.signed == 'true'
+        run: codesign --verify --strict --verbose=2 SoapMacUi.app
 
       - name: Notarisieren
         id: notarize
@@ -157,9 +163,14 @@ jobs:
           spctl -a -vvv -t exec SoapMacUi.app || true
           echo "stapled=true" >> "$GITHUB_OUTPUT"
 
+      # Der Tagname kommt über die Umgebung, nicht über ${{ }}: GitHub setzt
+      # Interpolationen in den Skripttext ein, bevor die Shell ihn liest, und
+      # Git erlaubt in Tagnamen unter anderem ` $ ( ) ; — ein Tag v1.0$(id)
+      # würde also ausgeführt. Als Variable liest die Shell den Wert nur.
       - name: Artefakt packen
+        env:
+          VERSION: ${{ needs.build.outputs.version }}
         run: |
-          VERSION="${{ needs.build.outputs.version }}"
           NAME="SoapMacUi-$VERSION-macos-universal.zip"
           ditto -c -k --keepParent SoapMacUi.app "$NAME"
           shasum -a 256 "$NAME" > "$NAME.sha256"
