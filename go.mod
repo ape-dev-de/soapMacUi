@@ -4,7 +4,7 @@ go 1.25.0
 
 require (
 	github.com/keybase/go-keychain v0.0.1
-	github.com/wailsapp/wails/v2 v2.15.0
+	github.com/wailsapp/wails/v2 v2.16.0
 )
 
 require (
